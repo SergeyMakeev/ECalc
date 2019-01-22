@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Expression Calculator</title>
+  <script src="js/math.min.js"></script>
+</head>
+
+
+<script type="text/javascript">
+
+math.config({ number: 'BigNumber', precision: 128 });
+
+function log_message(txt) {
+    console.log(txt);
+}
+
+
+function onKeyPress(element) {
+    var text = element.value;
+
+// reference UI
+// http://farplugs.sourceforge.net/img/codercalc.png
+//
+// have to replace 0xff and 01111b to regular numbers
+// http://mathjs.org/docs/reference/constants.html
+
+    var res = "";
+
+    try {
+        res = math.eval(text);
+    }
+
+    catch(err) {
+        log_message("err: '" + err.message + "'");
+        res = err.message;
+    }
+
+    log_message("e: '" + text + "'");
+    log_message("r: '" + res + "'");
+}
+
+</script>
+
+<body>
+<input type="text" size="100" oninput="onKeyPress(this)">
+<br>
+
+<table>
+    <tr>
+        <td>Hex</td>
+        <td>0xFF</td>
+    </tr>
+    <tr>
+        <td>Dec</td>
+        <td>255</td>
+    </tr>
+    <tr>
+        <td>Bin</td>
+        <td>00000000 11111111 00011111 00011101</td>
+    </tr>
+</table>
+
+</body>
+</html>
