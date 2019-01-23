@@ -14,15 +14,120 @@ function log_message(txt) {
     console.log(txt);
 }
 
+function is_dec_digit(chr) {
+    if (chr == "0" || chr == "1" || chr == "2" ||
+        chr == "3" || chr == "4" || chr == "5" ||
+        chr == "6" || chr == "7" || chr == "8" ||
+        chr == "9") {
+            return true;
+    }
+    return false;
+}
+
+function is_hex_digit(chr) {
+    if (is_dec_digit(chr) ||
+        chr == "a" || chr == "A" ||
+        chr == "b" || chr == "B" ||
+        chr == "c" || chr == "C" ||
+        chr == "d" || chr == "D" ||
+        chr == "e" || chr == "E" ||
+        chr == "f" || chr == "F") {
+            return true;
+    }
+    return false;
+}
+
+function is_binary_number(str) {
+    for(var i = 0; i < str.length; i++) {
+        var chr = str.charAt(i);
+        if (chr != "0" && chr != "1") {
+            return false;
+        }
+    }
+    return true;
+}
+
+function preprocessString(text) {
+    var res = [];
+    var num = ""
+    var is_hex = false;
+    for(var i = 0; i < text.length; i++) {
+        var chr = text.charAt(i);
+
+        var j = (i + 1);
+        if (j < text.length) {
+            var nextChr = text.charAt(j);
+            if (num.length == 0 && chr == "0" && 
+                (nextChr == "x" || nextChr == "X"))
+            {
+                is_hex = true;
+                //num = "0x";
+                i+=1;
+                continue;
+            }
+        }
+
+        var is_digit = is_hex ? is_hex_digit(chr) : is_dec_digit(chr); 
+        if (!is_digit) {
+            if (num && num.length > 0) {
+                var base = is_hex ? 16 : 10;
+                if (chr == "b" && is_binary_number(num)) {
+                    base = 2;
+                    chr = null;
+                }
+                log_message("parse(" + num + ", " + base + ")");
+                var dec_num = parseInt(num, base);
+                res.push(dec_num);
+                num = "";
+                is_hex = false;
+            }
+
+            if (chr) {
+                res.push(chr);
+            }
+        } else {
+            num += chr;
+        }
+    }
+
+    if (num && num.length > 0) {
+        var base = is_hex ? 16 : 10;
+        if (chr == "b" && is_binary_number(num)) {
+            base = 2;
+            chr = null;
+        }
+        log_message("parse(" + num + ", " + base + ")");
+        var dec_num = parseInt(num, base);
+        res.push(dec_num);
+        num = "";
+        is_hex = false;
+    }
+
+    // convert back to string
+    var result = "";
+    for(var i = 0; i < res.length; i++) {
+        result += res[i];
+    }
+
+    // http://mathjs.org/docs/expressions/syntax.html
+    // replace pow (^) to bitwise xor (^|)
+    result = result.replace("^", "^|");
+
+    return result;
+}
+
 
 function onKeyPress(element) {
-    var text = element.value;
+    var text = preprocessString(element.value);
 
 // reference UI
 // http://farplugs.sourceforge.net/img/codercalc.png
 //
 // have to replace 0xff and 01111b to regular numbers
 // http://mathjs.org/docs/reference/constants.html
+//
+// IEEE 754
+// https://www.h-schmidt.net/FloatConverter/IEEE754.html
 
     var res = "";
 
@@ -48,15 +153,35 @@ function onKeyPress(element) {
 <table>
     <tr>
         <td>Hex</td>
-        <td>0xFF</td>
+        <td id=hex_out>0xFF</td>
     </tr>
     <tr>
         <td>Dec</td>
-        <td>255</td>
+        <td id=dec_out>255</td>
     </tr>
     <tr>
         <td>Bin</td>
-        <td>00000000 11111111 00011111 00011101</td>
+        <td id=bin_out>00000000 11111111 00011111 00011101</td>
+    </tr>
+    <tr>
+        <td>Ascii</td>
+        <td id=ascii_out>"A"</td>
+    </tr>
+    <tr>
+        <td>IEEE 754</td>
+        <td id=ieee_out>0x3f800000</td>
+    </tr>
+    <tr>
+        <td>Sign</td>
+        <td id=ieees_out>0</td>
+    </tr>
+    <tr>
+        <td>Exponent</td>
+        <td id=ieeee_out>127</td>
+    </tr>
+    <tr>
+        <td>Mantisa</td>
+        <td id=ieem_out>0x0</td>
     </tr>
 </table>
 
