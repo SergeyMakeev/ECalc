@@ -16,6 +16,14 @@ function log_message(txt) {
     console.log(txt);
 }
 
+function init() {
+
+    var text_input = document.getElementById("text_input");
+    onKeyPress(text_input);
+   
+}
+
+
 function formatBinary(v) {
 
     if (v.startsWith("0b") || v.startsWith("0b"))
@@ -299,64 +307,110 @@ function onKeyPress(element) {
     }
 }
 
+
+
 </script>
 
 
 <style type="text/css" media="screen">
 
+body {
+    background-color: #000080;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+	font-size: 16px;
+    color: #ffff00;
+	font-style: normal;
+    font-variant: normal;
+}
+
+input{
+    background-color: #008080;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+	font-size: 16px;
+    color: #c0c0c0;
+	font-style: normal;
+    font-variant: normal;
+}
+
+table {
+    background-color: #c0c0c0;
+    color: #000000;
+}
+
+.white {
+    color: #ffffff;
+}
+
 .odd {
-   color: #000090;
+   color: #000000;
 }
 
 .even {
-   color: #0000ff;
+   color: #505050;
 }
 
 
 </style>
 
-<body>
-<input type="text" size="100" oninput="onKeyPress(this)">
-<br>
+<body onload="init();">
 
-<table>
-    <tr>
-        <td>Result</td>
-        <td id=dec_out>-</td>
-    </tr>
-    <tr>
-        <td>Hex</td>
-        <td id=hex_out>-</td>
-    </tr>
-    <tr>
-        <td>Bin</td>
-        <td id=bin_out>-</td>
-    </tr>
-    <tr>
-        <td>Ascii</td>
-        <td id=ascii_out>-</td>
-    </tr>
-    <tr>
-        <td>IEEE 754</td>
-        <td id=ieee_out_f>-</td>
-    </tr>
-    <tr>
-        <td>IEEE 754 (hex)</td>
-        <td id=ieee_out>-</td>
-    </tr>
-    <tr>
-        <td>Sign</td>
-        <td id=ieee_out_s>-</td>
-    </tr>
-    <tr>
-        <td>Exponent</td>
-        <td id=ieee_out_e>-</td>
-    </tr>
-    <tr>
-        <td>Mantisa</td>
-        <td id=ieee_out_m>-</td>
-    </tr>
-</table>
+<div>
+
+
+    <table>
+            <tr>
+                <td>
+                    <input id=text_input type="text" size="100" oninput="onKeyPress(this)">
+                </td>
+            </tr>
+            <tr>
+                <td>
+
+                    <table>
+                        <tr>
+                            <td><span class="white">Result</span></td>
+                            <td id=dec_out>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Hex</span></td>
+                            <td id=hex_out>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Bin</span></td>
+                            <td id=bin_out>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Ascii</span></td>
+                            <td id=ascii_out>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">IEEE 754</span></td>
+                            <td id=ieee_out_f>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">IEEE 754 (hex)</span></td>
+                            <td id=ieee_out>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Sign</span></td>
+                            <td id=ieee_out_s>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Exponent</span></td>
+                            <td id=ieee_out_e>-</td>
+                        </tr>
+                        <tr>
+                            <td><span class="white">Mantisa</span></td>
+                            <td id=ieee_out_m>-</td>
+                        </tr>
+                    </table>
+
+                </td>
+            </tr>
+        </table>
+
+
+</div>
 
 </body>
 </html>
