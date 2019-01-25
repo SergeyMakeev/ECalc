@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8"/>
   <title>Expression Calculator</title>
   <script src="js/math.min.js"></script>
 </head>
@@ -12,6 +13,14 @@ math.config({ number: 'BigNumber', precision: 128 });
 
 function log_message(txt) {
     console.log(txt);
+}
+
+function byteToHex(b) {
+    var r = b.toString(16);
+    if (r.length == 1) {
+        r = "0" + r;
+    }
+    return r;
 }
 
 function is_dec_digit(chr) {
@@ -144,6 +153,13 @@ function onKeyPress(element) {
     var hout = document.getElementById("hex_out");
     var dout = document.getElementById("dec_out");
     var aout = document.getElementById("ascii_out");
+    var fout = document.getElementById("ieee_out");
+    var fout_f = document.getElementById("ieee_out_f");
+
+    var fout_s = document.getElementById("ieee_out_s");
+    var fout_e = document.getElementById("ieee_out_e");
+    var fout_m = document.getElementById("ieee_out_m");
+    
 
 
     try {
@@ -177,6 +193,29 @@ function onKeyPress(element) {
             aout.innerHTML = "?";
         }
 
+
+        var dbl = bigres.toNumber();
+        var flt = Math.fround(dbl);
+
+        var bytes = new Uint8Array(4);
+        new DataView(bytes.buffer).setFloat32(0, flt);
+
+        log_message(bytes);
+
+        fout_f.innerHTML = flt.toString();
+
+        var hexStr = byteToHex(bytes[0]) + byteToHex(bytes[1]) + byteToHex(bytes[2]) + byteToHex(bytes[3]);
+        fout.innerHTML = hexStr;
+        
+        var fltHex = parseInt(hexStr, 16);
+        var sign = (fltHex >> 31) & 1;
+        var exp = (fltHex & 0x7f800000) >> 23;
+        var mantisa = (fltHex & 0x007fffff);
+
+        fout_s.innerHTML = sign;
+        fout_e.innerHTML = exp;
+        fout_m.innerHTML = mantisa;
+
     } else
     {
         dout.innerHTML = "No result";
@@ -192,35 +231,39 @@ function onKeyPress(element) {
 <table>
     <tr>
         <td>Hex</td>
-        <td id=hex_out>0xFF</td>
+        <td id=hex_out>-</td>
     </tr>
     <tr>
         <td>Dec</td>
-        <td id=dec_out>255</td>
+        <td id=dec_out>-</td>
     </tr>
     <tr>
         <td>Bin</td>
-        <td id=bin_out>00000000 11111111 00011111 00011101</td>
+        <td id=bin_out>-</td>
     </tr>
     <tr>
         <td>Ascii</td>
-        <td id=ascii_out>"A"</td>
+        <td id=ascii_out>-</td>
     </tr>
     <tr>
         <td>IEEE 754</td>
-        <td id=ieee_out>0x3f800000</td>
+        <td id=ieee_out_f>-</td>
+    </tr>
+    <tr>
+        <td>IEEE 754 (hex)</td>
+        <td id=ieee_out>-</td>
     </tr>
     <tr>
         <td>Sign</td>
-        <td id=ieee_out_s>0</td>
+        <td id=ieee_out_s>-</td>
     </tr>
     <tr>
         <td>Exponent</td>
-        <td id=ieee_out_e>127</td>
+        <td id=ieee_out_e>-</td>
     </tr>
     <tr>
         <td>Mantisa</td>
-        <td id=ieee_out_m>0x0</td>
+        <td id=ieee_out_m>-</td>
     </tr>
 </table>
 
