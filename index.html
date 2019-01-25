@@ -7,12 +7,74 @@
 </head>
 
 
+
 <script type="text/javascript">
 
 math.config({ number: 'BigNumber', precision: 128 });
 
 function log_message(txt) {
     console.log(txt);
+}
+
+function formatBinary(v) {
+
+    if (v.startsWith("0b") || v.startsWith("0b"))
+    {
+        v = v.substring(2);
+    }
+
+    log_message("L:" + v.length);
+    var paddingZeroesNum = 8 - (v.length % 8);
+    if (paddingZeroesNum == 8) {
+        paddingZeroesNum = 0;
+    }
+    log_message("P:" + paddingZeroesNum);
+    v = "0".repeat(paddingZeroesNum) + v;
+
+    var spansCount = Math.floor(v.length / 8);
+    var v1 = "";
+    for(var i = 0; i < spansCount; i++)
+    {
+        if (i & 1) {
+            v1 = v1 + '<span class="odd">'  + v.substring(i*8, i*8+8) + '</span>';
+        } else {
+            v1 = v1 + '<span class="even">'  + v.substring(i*8, i*8+8) + '</span>';
+        }
+    }
+
+    v = v1 + "b";
+    return v;
+}
+
+function formatHex(v) {
+
+    if (v.startsWith("0x") || v.startsWith("0X"))
+    {
+        v = v.substring(2);
+    }
+
+    log_message(v.length);
+    var paddingZeroesNum = 2 - (v.length % 2);
+    if (paddingZeroesNum == 2) {
+        paddingZeroesNum = 0;
+    }
+    log_message(paddingZeroesNum);
+    v = "0".repeat(paddingZeroesNum) + v;
+
+    var spansCount = Math.floor(v.length / 2);
+    var v1 = "";
+    for(var i = 0; i < spansCount; i++)
+    {
+        if (i & 1) {
+            v1 = v1 + '<span class="odd">'  + v.substring(i*2, i*2+2) + '</span>';
+        } else {
+            v1 = v1 + '<span class="even">'  + v.substring(i*2, i*2+2) + '</span>';
+        }
+    }
+
+
+    v = "0x" + v1;
+    return v;
 }
 
 function byteToHex(b) {
@@ -149,18 +211,26 @@ function onKeyPress(element) {
 // IEEE 754
 // https://www.h-schmidt.net/FloatConverter/IEEE754.html
 
+    var dout = document.getElementById("dec_out");
+
     var bout = document.getElementById("bin_out");
     var hout = document.getElementById("hex_out");
-    var dout = document.getElementById("dec_out");
     var aout = document.getElementById("ascii_out");
     var fout = document.getElementById("ieee_out");
     var fout_f = document.getElementById("ieee_out_f");
-
     var fout_s = document.getElementById("ieee_out_s");
     var fout_e = document.getElementById("ieee_out_e");
     var fout_m = document.getElementById("ieee_out_m");
     
 
+    bout.innerHTML = "N/A";
+    hout.innerHTML = "N/A";
+    aout.innerHTML = "N/A";
+    fout.innerHTML = "N/A";
+    fout_f.innerHTML = "N/A";
+    fout_s.innerHTML = "N/A";
+    fout_e.innerHTML = "N/A";
+    fout_m.innerHTML = "N/A";
 
     try {
         var res = math.eval(text);
@@ -177,44 +247,51 @@ function onKeyPress(element) {
         log_message("e: '" + text + "'");
         log_message("r: '" + res + "'");
 
-        var bigres = math.bignumber(res);
-        var big_31 = math.bignumber(31);
-        var big_128 = math.bignumber(128);
+        try {
 
-    //https://unpkg.com/mathjs@5.4.1/dist/math.js
-        bout.innerHTML = bigres.floor().toBinary();
-        hout.innerHTML = bigres.floor().toHexadecimal();
-        dout.innerHTML = math.format(bigres, {notation: "fixed"});
+            var bigres = math.bignumber(res);
+            var big_31 = math.bignumber(31);
+            var big_128 = math.bignumber(128);
 
-        if (bigres.greaterThan(big_31) && bigres.lessThan(big_128)) {
-            var ascii = String.fromCharCode(bigres.floor().toNumber());
-            aout.innerHTML = ascii;
-        } else {
-            aout.innerHTML = "?";
+        //https://unpkg.com/mathjs@5.4.1/dist/math.js
+            bout.innerHTML = formatBinary(bigres.floor().toBinary());
+            hout.innerHTML = formatHex(bigres.floor().toHexadecimal());
+            dout.innerHTML = math.format(bigres, {notation: "fixed"});
+
+            if (bigres.greaterThan(big_31) && bigres.lessThan(big_128)) {
+                var ascii = String.fromCharCode(bigres.floor().toNumber());
+                aout.innerHTML = ascii;
+            } else {
+                aout.innerHTML = "?";
+            }
+
+
+            var dbl = bigres.toNumber();
+            var flt = Math.fround(dbl);
+
+            var bytes = new Uint8Array(4);
+            new DataView(bytes.buffer).setFloat32(0, flt);
+
+            log_message(bytes);
+
+            fout_f.innerHTML = flt.toString();
+
+            var hexStr = byteToHex(bytes[0]) + byteToHex(bytes[1]) + byteToHex(bytes[2]) + byteToHex(bytes[3]);
+            fout.innerHTML = formatHex(hexStr);
+            
+            var fltHex = parseInt(hexStr, 16);
+            var sign = (fltHex >> 31) & 1;
+            var exp = (fltHex & 0x7f800000) >> 23;
+            var mantisa = (fltHex & 0x007fffff);
+
+            fout_s.innerHTML = sign;
+            fout_e.innerHTML = exp;
+            fout_m.innerHTML = mantisa;
+        }
+        catch(err) {
+            dout.innerHTML = res;
         }
 
-
-        var dbl = bigres.toNumber();
-        var flt = Math.fround(dbl);
-
-        var bytes = new Uint8Array(4);
-        new DataView(bytes.buffer).setFloat32(0, flt);
-
-        log_message(bytes);
-
-        fout_f.innerHTML = flt.toString();
-
-        var hexStr = byteToHex(bytes[0]) + byteToHex(bytes[1]) + byteToHex(bytes[2]) + byteToHex(bytes[3]);
-        fout.innerHTML = hexStr;
-        
-        var fltHex = parseInt(hexStr, 16);
-        var sign = (fltHex >> 31) & 1;
-        var exp = (fltHex & 0x7f800000) >> 23;
-        var mantisa = (fltHex & 0x007fffff);
-
-        fout_s.innerHTML = sign;
-        fout_e.innerHTML = exp;
-        fout_m.innerHTML = mantisa;
 
     } else
     {
@@ -224,18 +301,32 @@ function onKeyPress(element) {
 
 </script>
 
+
+<style type="text/css" media="screen">
+
+.odd {
+   color: #000090;
+}
+
+.even {
+   color: #0000ff;
+}
+
+
+</style>
+
 <body>
 <input type="text" size="100" oninput="onKeyPress(this)">
 <br>
 
 <table>
     <tr>
-        <td>Hex</td>
-        <td id=hex_out>-</td>
+        <td>Result</td>
+        <td id=dec_out>-</td>
     </tr>
     <tr>
-        <td>Dec</td>
-        <td id=dec_out>-</td>
+        <td>Hex</td>
+        <td id=hex_out>-</td>
     </tr>
     <tr>
         <td>Bin</td>
