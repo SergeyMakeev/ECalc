@@ -1,5 +1,16 @@
 <!DOCTYPE html>
 <html>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-62571504-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-62571504-2');
+</script>
+
+
 <head>
   <meta charset="utf-8"/>
   <title>Expression Calculator</title>
@@ -7,27 +18,203 @@
 </head>
 
 
-
 <script type="text/javascript">
 
-math.config({ number: 'BigNumber', precision: 128 });
+
+// TODO: color schemes
+
+
+function isLocalStorageSupported() {
+    return typeof(Storage) !== 'undefined';
+}
+
+function getParam(param) {
+    return new URLSearchParams(window.location.search).get(param);
+}
 
 function log_message(txt) {
-    console.log(txt);
+    //console.log(txt);
 }
+
+// Fast Half Float Conversions algorithm
+// ftp://ftp.fox-toolkit.org/pub/fasthalffloatconversion.pdf
+const buffer = new ArrayBuffer(4);
+const floatView = new Float32Array(buffer);
+const uint32View = new Uint32Array(buffer);
+
+const baseTable = new Uint32Array(512);
+const shiftTable = new Uint32Array(512);
+
+const mantissaTable = new Uint32Array(2048);
+const exponentTable = new Uint32Array(64);
+const offsetTable = new Uint32Array(64);
+
+
+// Float to U32 conversion
+const bytes = new Uint8Array(4);
+const view = new DataView(bytes.buffer);
+
+
+const storageName = "sm_ecalc";
+
 
 function init() {
 
+    var colorScheme = getParam("scheme");
+
+    math.config({ number: 'BigNumber', precision: 128 });
+
+    // http://mathjs.org/docs/core/extension.html
+    math.import({
+    float: function (u32) {
+        return castU32ToFloat(u32);
+    },
+    half: function (u16) {
+        return castHalfU16ToFloat(u16);
+    }
+
+    })
+
+    for(let i = 0; i < 256; ++i) {
+        const e = i - 127;
+
+        // very small number (0, -0)
+        if(e < -27) {
+            baseTable[i | 0x000] = 0x0000;
+            baseTable[i | 0x100] = 0x8000;
+            shiftTable[i | 0x000] = 24;
+            shiftTable[i | 0x100] = 24;
+
+        // small number (denorm)
+        } else if(e < -14) {
+            baseTable[i | 0x000] =  0x0400 >> (-e - 14);
+            baseTable[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
+            shiftTable[i | 0x000] = -e - 1;
+            shiftTable[i | 0x100] = -e - 1;
+
+        // normal number
+        } else if(e <= 15) {
+            baseTable[i | 0x000] =  (e + 15) << 10;
+            baseTable[i | 0x100] = ((e + 15) << 10) | 0x8000;
+            shiftTable[i | 0x000] = 13;
+            shiftTable[i | 0x100] = 13;
+
+        // large number (Infinity, -Infinity)
+        } else if(e < 128) {
+            baseTable[i | 0x000] = 0x7c00;
+            baseTable[i | 0x100] = 0xfc00;
+            shiftTable[i | 0x000] = 24;
+            shiftTable[i | 0x100] = 24;
+
+        // stay (NaN, Infinity, -Infinity)
+        } else {
+            baseTable[i | 0x000] = 0x7c00;
+            baseTable[i | 0x100] = 0xfc00;
+            shiftTable[i | 0x000] = 13;
+            shiftTable[i | 0x100] = 13;
+        }
+    }
+
+
+    mantissaTable[0] = 0;
+    for(let i = 1; i < 1024; ++i) {
+        let m = i << 13;    // zero pad mantissa bits
+        let e = 0;          // zero exponent
+
+        // normalized
+        while((m & 0x00800000) === 0) {
+            e -= 0x00800000;    // decrement exponent
+            m <<= 1;
+        }
+
+        m &= ~0x00800000;   // clear leading 1 bit
+        e += 0x38800000;    // adjust bias
+
+        mantissaTable[i] = m | e;
+    }
+    for(let i = 1024; i < 2048; ++i) {
+        mantissaTable[i] = 0x38000000 + ((i - 1024) << 13);
+    }
+
+    exponentTable[0] = 0;
+    for(let i = 1; i < 31; ++i) {
+        exponentTable[i] = i << 23;
+    }
+    exponentTable[31] = 0x47800000;
+    exponentTable[32] = 0x80000000;
+    for(let i = 33; i < 63; ++i) {
+        exponentTable[i] = 0x80000000 + ((i - 32) << 23);
+    }
+    exponentTable[63] = 0xc7800000;
+
+    offsetTable[0] = 0;
+    for(let i = 1; i < 64; ++i) {
+        if(i === 32) {
+            offsetTable[i] = 0;
+        } else {
+            offsetTable[i] = 1024;
+        }
+    }
+
     var text_input = document.getElementById("text_input");
+
+    if (isLocalStorageSupported()) {
+        var expression = localStorage.getItem(storageName);
+        if (expression) {
+            text_input.value = expression;
+        }
+    }
+
     onKeyPress(text_input);
-   
 }
 
 
+// bit-cast float to u32
+function castFloatToU32(f) {
+    view.setFloat32(0, f);
+    // (value) >>> 0 trick to convert singned to unsigned
+    var i = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+    return i;
+}
+
+// bit-cast u32 backt to float
+function castU32ToFloat(u32) {
+    view.setUint8(0, (u32 >>> 24) & 0xff);
+    view.setUint8(1, (u32 >>> 16) & 0xff);
+    view.setUint8(2, (u32 >>> 8) & 0xff);
+    view.setUint8(3, (u32 >>> 0) & 0xff);
+
+    var num = view.getFloat32(0);
+    return num;
+}
+
+// convert float to half and cast half to u16
+function castFloatToHalfU16(num) {
+    floatView[0] = num;
+
+    const f = uint32View[0];
+    const e = (f >> 23) & 0x1ff;
+    return baseTable[e] + ((f & 0x007fffff) >> shiftTable[e]);
+}
+
+// cast u16 to half and convert it back to float
+function castHalfU16ToFloat(float16bits) {
+    const m = float16bits >> 10;
+    uint32View[0] = mantissaTable[offsetTable[m] + (float16bits & 0x3ff)] + exponentTable[m];
+    return floatView[0];
+}
+
+
+// format binaray string
 function formatBinary(v) {
 
-    if (v.startsWith("0b") || v.startsWith("0b"))
-    {
+    var negative = false;
+    if (v.startsWith("-")) {
+        v = v.substring(1);
+        negative = true;
+    }
+
+    if (v.startsWith("0b") || v.startsWith("0b")) {
         v = v.substring(2);
     }
 
@@ -50,11 +237,22 @@ function formatBinary(v) {
         }
     }
 
+    if (negative) {
+        v1 = "-" + v1;
+    }
+
     v = v1 + "b";
     return v;
 }
 
+// format hex string
 function formatHex(v) {
+
+    var negative = false;
+    if (v.startsWith("-")) {
+        v = v.substring(1);
+        negative = true;
+    }
 
     if (v.startsWith("0x") || v.startsWith("0X"))
     {
@@ -80,19 +278,16 @@ function formatHex(v) {
         }
     }
 
-
     v = "0x" + v1;
+
+    if (negative) {
+        v = "-" + v;
+    }
+
     return v;
 }
 
-function byteToHex(b) {
-    var r = b.toString(16);
-    if (r.length == 1) {
-        r = "0" + r;
-    }
-    return r;
-}
-
+//
 function is_dec_digit(chr) {
     if (chr == "0" || chr == "1" || chr == "2" ||
         chr == "3" || chr == "4" || chr == "5" ||
@@ -103,6 +298,7 @@ function is_dec_digit(chr) {
     return false;
 }
 
+//
 function is_hex_digit(chr) {
     if (is_dec_digit(chr) ||
         chr == "a" || chr == "A" ||
@@ -116,6 +312,7 @@ function is_hex_digit(chr) {
     return false;
 }
 
+//
 function is_binary_number(str) {
     for(var i = 0; i < str.length; i++) {
         var chr = str.charAt(i);
@@ -126,6 +323,9 @@ function is_binary_number(str) {
     return true;
 }
 
+// preprocess expression string (replace all hex and binary numbers with proper decimal representation)
+// math.js parser can't parse hex/binary
+//    and replace pow (^) to bitwise xor (^|)
 function preprocessString(text) {
     var res = [];
     var num = ""
@@ -205,40 +405,116 @@ function preprocessString(text) {
 }
 
 
+function copyTextToClipboard(text) {
+  var textArea = document.createElement("textarea");
+
+  //
+  // *** This styling is an extra step which is likely not required. ***
+  //
+  // Why is it here? To ensure:
+  // 1. the element is able to have focus and selection.
+  // 2. if element was to flash render it has minimal visual impact.
+  // 3. less flakyness with selection and copying which **might** occur if
+  //    the textarea element is not visible.
+  //
+  // The likelihood is the element won't even render, not even a flash,
+  // so some of these are just precautions. However in IE the element
+  // is visible whilst the popup box asking the user for permission for
+  // the web page to copy to the clipboard.
+  //
+
+  // Place in top-left corner of screen regardless of scroll position.
+  textArea.style.position = 'fixed';
+  textArea.style.top = 0;
+  textArea.style.left = 0;
+
+  // Ensure it has a small width and height. Setting to 1px / 1em
+  // doesn't work as this gives a negative w/h on some browsers.
+  textArea.style.width = '2em';
+  textArea.style.height = '2em';
+
+  // We don't need padding, reducing the size if it does flash render.
+  textArea.style.padding = 0;
+
+  // Clean up any borders.
+  textArea.style.border = 'none';
+  textArea.style.outline = 'none';
+  textArea.style.boxShadow = 'none';
+
+  // Avoid flash of white box if rendered for any reason.
+  textArea.style.background = 'transparent';
+
+
+  textArea.value = text;
+
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    var successful = document.execCommand('copy');
+    var msg = successful ? 'successful' : 'unsuccessful';
+    log_message('Copying text command was ' + msg);
+  } catch (err) {
+    log_message('Oops, unable to copy. Err: ' + err.message);
+  }
+
+  document.body.removeChild(textArea);
+}
+
+
+function copyToClipboard(elementName) {
+    var element = document.getElementById(elementName);
+
+    copyTextToClipboard(element.innerHTML);
+}
+
 function onKeyPress(element) {
+
+    if (isLocalStorageSupported()) {
+        localStorage.setItem(storageName, element.value);
+    }
+
     var text = preprocessString(element.value);
 
     log_message("in: " + text);
-
-// reference UI
-// http://farplugs.sourceforge.net/img/codercalc.png
-//
-// have to replace 0xff and 01111b to regular numbers
-// http://mathjs.org/docs/reference/constants.html
-//
-// IEEE 754
-// https://www.h-schmidt.net/FloatConverter/IEEE754.html
 
     var dout = document.getElementById("dec_out");
 
     var bout = document.getElementById("bin_out");
     var hout = document.getElementById("hex_out");
     var aout = document.getElementById("ascii_out");
-    var fout = document.getElementById("ieee_out");
-    var fout_f = document.getElementById("ieee_out_f");
-    var fout_s = document.getElementById("ieee_out_s");
-    var fout_e = document.getElementById("ieee_out_e");
-    var fout_m = document.getElementById("ieee_out_m");
+    
+    var fout_f = document.getElementById("ieee32_out_f");
+    var fout_h = document.getElementById("ieee32_out_h");
+    var fout_s = document.getElementById("ieee32_out_s");
+    var fout_e = document.getElementById("ieee32_out_e");
+    var fout_m = document.getElementById("ieee32_out_m");
+
+
+    var hout_f = document.getElementById("ieee16_out_f");
+    var hout_h = document.getElementById("ieee16_out_h");
+    var hout_s = document.getElementById("ieee16_out_s");
+    var hout_e = document.getElementById("ieee16_out_e");
+    var hout_m = document.getElementById("ieee16_out_m");
     
 
     bout.innerHTML = "N/A";
     hout.innerHTML = "N/A";
     aout.innerHTML = "N/A";
-    fout.innerHTML = "N/A";
+
     fout_f.innerHTML = "N/A";
+    fout_h.innerHTML = "N/A";
     fout_s.innerHTML = "N/A";
     fout_e.innerHTML = "N/A";
     fout_m.innerHTML = "N/A";
+
+    hout_f.innerHTML = "N/A";
+    hout_h.innerHTML = "N/A";
+    hout_s.innerHTML = "N/A";
+    hout_e.innerHTML = "N/A";
+    hout_m.innerHTML = "N/A";
+
 
     try {
         var res = math.eval(text);
@@ -273,30 +549,44 @@ function onKeyPress(element) {
                 aout.innerHTML = "?";
             }
 
-
             var dbl = bigres.toNumber();
             var flt = Math.fround(dbl);
 
-            var bytes = new Uint8Array(4);
-            new DataView(bytes.buffer).setFloat32(0, flt);
-
-            log_message(bytes);
-
             fout_f.innerHTML = flt.toString();
 
-            var hexStr = byteToHex(bytes[0]) + byteToHex(bytes[1]) + byteToHex(bytes[2]) + byteToHex(bytes[3]);
-            fout.innerHTML = formatHex(hexStr);
+            var flt_int = castFloatToU32(flt);
+            log_message("fi:" + flt_int);
+            fout_h.innerHTML = formatHex(flt_int.toString(16));
             
-            var fltHex = parseInt(hexStr, 16);
-            var sign = (fltHex >> 31) & 1;
-            var exp = (fltHex & 0x7f800000) >> 23;
-            var mantisa = (fltHex & 0x007fffff);
+            var sign = (flt_int >> 31) & 1;
+            var exp = ((flt_int & 0x7f800000) >> 23) & 0xff;
+            var mantisa = (flt_int & 0x007fffff);
 
             fout_s.innerHTML = sign;
-            fout_e.innerHTML = exp;
+            fout_e.innerHTML = (exp - 127);
             fout_m.innerHTML = mantisa;
+
+            //hout_h.innerHTML = formatHex(half_int.toString(16));
+
+            var half_int = castFloatToHalfU16(flt);
+            log_message("c:" + half_int);
+
+            hout_h.innerHTML = formatHex(half_int.toString(16));
+
+            hout_f.innerHTML = castHalfU16ToFloat(half_int);
+
+            var hsign = (half_int >> 15) & 1;
+            var hexp = ((half_int & 0x7c00) >> 10) & 0x1f;
+            var hmantisa = (half_int & 0x03ff);
+
+            hout_s.innerHTML = hsign;
+            hout_e.innerHTML = (hexp - 15);
+            hout_m.innerHTML = hmantisa;
+
+
         }
         catch(err) {
+            log_message("err: '" + err.message + "'");
             dout.innerHTML = res;
         }
 
@@ -330,6 +620,11 @@ input{
     color: #c0c0c0;
 	font-style: normal;
     font-variant: normal;
+    width: 100%;
+    padding-right:10px;
+    -moz-box-sizing: border-box; 
+    -webkit-box-sizing: border-box;     
+    box-sizing: border-box;     
 }
 
 table {
@@ -337,9 +632,28 @@ table {
     color: #000000;
 }
 
+.result {
+    background-color: #a0a0a0;
+    min-width:500px;
+}
+
+.yellow {
+    color: #ffff00;
+}
+
 .white {
     color: #ffffff;
 }
+
+.small:visited {
+    color: #ffffff;
+}
+
+.small {
+    color: #ffffff;
+    font-size: 10px;
+}
+
 
 .odd {
    color: #000000;
@@ -347,6 +661,23 @@ table {
 
 .even {
    color: #505050;
+}
+
+.btn_copy {
+    display:block;
+    min-width:20px;
+    min-width:20px;
+    width: 20px;
+    height: 20px;
+    
+    background:url(./img/copy.svg) no-repeat; 
+    cursor:pointer;
+    border:none;
+    
+}
+
+.btn_copy:hover {
+  background-color: #b0b0b0;
 }
 
 
@@ -359,49 +690,85 @@ table {
 
     <table>
             <tr>
-                <td>
-                    <input id=text_input type="text" size="100" oninput="onKeyPress(this)">
-                </td>
+                <td class="yellow">Expression</td>
             </tr>
             <tr>
                 <td>
-
+                    <input id=text_input type="text" oninput="onKeyPress(this)">
+                </td>
+            </tr>
+            <tr>
+                <td>                        
                     <table>
                         <tr>
                             <td><span class="white">Result</span></td>
-                            <td id=dec_out>-</td>
+                            <td class="result" id=dec_out>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('dec_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Hex</span></td>
-                            <td id=hex_out>-</td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Hexadecimal" target="_blank">Hex</a></span></td>
+                            <td class="result" id=hex_out>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('hex_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Bin</span></td>
-                            <td id=bin_out>-</td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Binary_number" target="_blank">Bin</a></span></td>
+                            <td class="result" id=bin_out>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('bin_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Ascii</span></td>
-                            <td id=ascii_out>-</td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/ASCII#Character_set" target="_blank">ASCII</a></span></td>
+                            <td class="result" id=ascii_out>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ascii_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">IEEE 754</span></td>
-                            <td id=ieee_out_f>-</td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format" target="_blank">IEEE 754 (single)</a></span></td>
+                            <td class="result" id=ieee32_out_f>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_f')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">IEEE 754 (hex)</span></td>
-                            <td id=ieee_out>-</td>
+                            <td align="right"><span class="white">Hex</span></td>
+                            <td class="result" id=ieee32_out_h>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_h')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Sign</span></td>
-                            <td id=ieee_out_s>-</td>
+                            <td align="right"><span class="white">Sign</span></td>
+                            <td class="result" id=ieee32_out_s>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_s')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Exponent</span></td>
-                            <td id=ieee_out_e>-</td>
+                            <td align="right"><span class="white">Exponent</span></td>
+                            <td class="result" id=ieee32_out_e>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_e')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white">Mantisa</span></td>
-                            <td id=ieee_out_m>-</td>
+                            <td align="right"><span class="white">Mantisa</span></td>
+                            <td class="result" id=ieee32_out_m>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_m')" /></td>
+                        </tr>
+                        <tr>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Half-precision_floating-point_format" target="_blank">IEEE 754 (half)</a></span></td>
+                            <td class="result" id=ieee16_out_f>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_f')" /></td>
+                        </tr>
+                        <tr>
+                            <td align="right"><span class="white">Hex</span></td>
+                            <td class="result" id=ieee16_out_h>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_h')" /></td>
+                        </tr>
+                        <tr>
+                            <td align="right"><span class="white">Sign</span></td>
+                            <td class="result" id=ieee16_out_s>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_s')" /></td>
+                        </tr>
+                        <tr>
+                            <td align="right"><span class="white">Exponent</span></td>
+                            <td class="result" id=ieee16_out_e>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_e')" /></td>
+                        </tr>
+                        <tr>
+                            <td align="right"><span class="white">Mantisa</span></td>
+                            <td class="result" id=ieee16_out_m>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_m')" /></td>
                         </tr>
                     </table>
 
@@ -409,7 +776,10 @@ table {
             </tr>
         </table>
 
+</div>
 
+<div>
+        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev</a>
 </div>
 
 </body>
