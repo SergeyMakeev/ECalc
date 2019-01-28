@@ -466,7 +466,7 @@ function copyTextToClipboard(text) {
 function copyToClipboard(elementName) {
     var element = document.getElementById(elementName);
 
-    copyTextToClipboard(element.innerHTML);
+    copyTextToClipboard(element.innerText);
 }
 
 function onKeyPress(element) {
