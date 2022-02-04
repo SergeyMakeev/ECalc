@@ -246,6 +246,57 @@ function formatBinary(v) {
     return v;
 }
 
+
+function formatDecimal(v) {
+    var negative = false;
+    if (v.startsWith("-")) {
+        v = v.substring(1);
+        negative = true;
+    }
+
+    var fractional = ""
+    var dotIndex = v.indexOf(".")
+    if (dotIndex >= 1) {
+        //fractional = v.substring(dotIndex, v.length);
+        fractional = v.substring(dotIndex, dotIndex + 21); // clamp fractional length to 20 digits (. included)
+        v = v.substring(0, dotIndex);
+
+    }
+
+
+    var spansCount = Math.floor(v.length / 3);
+
+
+    var v1 = "";
+    for(var i = 0; i < spansCount; i++)
+    {
+        var p = v.length - 3 - i*3
+        if (i & 1) {
+            v1 = '<span class="odd">'  + v.substring(p, p+3) + '</span>' + v1;
+        } else {
+            v1 = '<span class="even">'  + v.substring(p, p+3) + '</span>' + v1;
+        }
+    }
+
+    var headLen = (v.length % 3);
+
+    if (spansCount & 1) {
+            v1 = '<span class="odd">'  + v.substring(0, headLen) + '</span>' + v1;
+        } else {
+            v1 = '<span class="even">'  + v.substring(0, headLen) + '</span>' + v1;
+        }
+
+
+    v = v1
+    if (negative) {
+        v = "-" + v;
+    }
+
+    v = v + fractional
+
+    return v;
+}
+
 // format hex string
 function formatHex(v) {
 
@@ -402,6 +453,9 @@ function preprocessString(text) {
     // replace pow (^) to bitwise xor (^|)
     result = result.replace("^", "^|");
 
+
+    console.log("math.js = '" + result + "'")
+
     return result;
 }
 
@@ -470,6 +524,16 @@ function copyToClipboard(elementName) {
     copyTextToClipboard(element.innerText);
 }
 
+function onKeyUp(event) {
+    if (event.keyCode === 13) {
+        log_message("Enter pressed");
+        var dout = document.getElementById("dec_out");
+        log_message(dout.innerText)
+        var text_input = document.getElementById("text_input");
+        text_input.value = dout.innerText;
+    }
+}
+
 function onKeyPress(element) {
 
     if (isLocalStorageSupported()) {
@@ -499,6 +563,8 @@ function onKeyPress(element) {
     var hout_e = document.getElementById("ieee16_out_e");
     var hout_m = document.getElementById("ieee16_out_m");
     
+    var texout = document.getElementById("tex_out");
+    
 
     bout.innerHTML = "N/A";
     hout.innerHTML = "N/A";
@@ -516,15 +582,28 @@ function onKeyPress(element) {
     hout_e.innerHTML = "N/A";
     hout_m.innerHTML = "N/A";
 
+    texout.innerHTML = "N/A";
+
 
     try {
-        var res = math.eval(text);
+        var node = math.parse(text)         // parse expression into a node tree
+        const code = node.compile()           // compile the node tree
+        var res = code.evaluate()      // evaluate the code with an optional scope        
+        //var res = math.evaluate(text);
     }
 
     catch(err) {
-        log_message("err: '" + err.message + "'");
+        //console.log("err: '" + err.message + "'");
         dout.innerHTML = err.message;
         return;
+    }
+
+    if (node)
+    {
+        //LaTeX 
+        texout.innerHTML = node.toTex()
+        
+
     }
 
     if (res)
@@ -541,7 +620,8 @@ function onKeyPress(element) {
         //https://unpkg.com/mathjs@5.4.1/dist/math.js
             bout.innerHTML = formatBinary(bigres.floor().toBinary());
             hout.innerHTML = formatHex(bigres.floor().toHexadecimal());
-            dout.innerHTML = math.format(bigres, {notation: "fixed"});
+            //dout.innerHTML = math.format(bigres, {notation: "fixed"});
+            dout.innerHTML = formatDecimal(bigres.toString());
 
             if (bigres.greaterThan(big_31) && bigres.lessThan(big_128)) {
                 var ascii = String.fromCharCode(bigres.floor().toNumber());
@@ -695,14 +775,14 @@ table {
             </tr>
             <tr>
                 <td>
-                    <input id=text_input type="text" oninput="onKeyPress(this)">
+                    <input id=text_input type="text" oninput="onKeyPress(this)" onkeyup="onKeyUp(event)">
                 </td>
             </tr>
             <tr>
                 <td>                        
                     <table>
                         <tr>
-                            <td><span class="white">Result</span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Decimal" target="_blank">Dec</a></span></td>
                             <td class="result" id=dec_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('dec_out')" /></td>
                         </tr>
@@ -771,6 +851,11 @@ table {
                             <td class="result" id=ieee16_out_m>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_m')" /></td>
                         </tr>
+                        <tr>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/LaTeX" target="_blank">LaTeX</a></span></td>
+                            <td class="result" id=tex_out>-</td>
+                            <td><button type="button" class="btn_copy" onclick="copyToClipboard('tex_out')" /></td>
+                        </tr>
                     </table>
 
                 </td>
@@ -782,6 +867,11 @@ table {
 <div>
         <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev</a>
 </div>
+<div>
+    <a class="small" href="https://mathjs.org/index.html" target="_blank">powered by math.js</a>
+</div>
+
+
 
 </body>
 </html>
