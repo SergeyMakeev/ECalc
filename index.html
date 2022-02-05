@@ -408,8 +408,21 @@ function preprocessString(text) {
                 }
                 if (base != 10) {
                     log_message("parse(" + num + ", " + base + ")");
-                    var dec_num = parseInt(num, base);
-                    res.push(dec_num);
+                    if (base == 2)
+                    {
+                        res.push(BigInt("0b" + num).toString());
+                    } else if (base == 8)
+                    {
+                        res.push(BigInt("0o" + num).toString());
+                    } else if (base == 16)
+                    {
+                        res.push(BigInt("0x" + num).toString());
+                    } else
+                    {
+                        // fallback to lowprecision convertor
+                        res.push(parseInt(num, base).toString());
+                    }
+                    
                 } else {
                     res.push(num);
                 }
@@ -434,8 +447,20 @@ function preprocessString(text) {
         }
         if (base != 10) {
             log_message("parse(" + num + ", " + base + ")");
-            var dec_num = parseInt(num, base);
-            res.push(dec_num);
+            if (base == 2)
+            {
+                res.push(BigInt("0b" + num).toString());
+            } else if (base == 8)
+            {
+                res.push(BigInt("0o" + num).toString());
+            } else if (base == 16)
+            {
+                res.push(BigInt("0x" + num).toString());
+            } else
+            {
+                // fallback to lowprecision convertor
+                res.push(parseInt(num, base).toString());
+            }
         } else {
             res.push(num);
         }
@@ -865,10 +890,8 @@ table {
 </div>
 
 <div>
-        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev</a>
-</div>
-<div>
-    <a class="small" href="https://mathjs.org/index.html" target="_blank">powered by math.js</a>
+        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev (v1.13)</a><br>
+        <a class="small" href="https://mathjs.org/index.html" target="_blank">powered by math.js</a>
 </div>
 
 
