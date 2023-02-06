@@ -38,9 +38,12 @@ function get_current_expression() {
     }
 */
     var urlParams = new URLSearchParams(window.location.search);
-    var expr = atob(urlParams.get('expr'));
-    console.log(expr);
-    return expr;
+    if (urlParams.has('expr'))
+    {
+        var expr = atob(urlParams.get('expr'));
+        //console.log(expr);
+        return expr;
+    }
 
     return null;
 }
@@ -954,8 +957,7 @@ table {
 </div>
 
 <div>
-        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev (v1.13)</a><br>
-        <a class="small" href="https://mathjs.org/index.html" target="_blank">powered by math.js</a>
+        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev (v1.131)</a><br>
 </div>
 
 <div>
@@ -1079,7 +1081,7 @@ table {
     </table>
 
 
-    <a class="small" href="https://mathjs.org/docs/reference/functions.html" target="_blank">full list of functions</a>
+    <a class="small" href="https://mathjs.org/docs/reference/functions.html" target="_blank">full list of functions (powered by math.js)</a>
     
 </div>
 
