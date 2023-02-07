@@ -3,865 +3,896 @@
 
 <script async src="https://www.googletagmanager.com/gtag/js?id=UA-62571504-2"></script>
 <script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
 
-  gtag('config', 'UA-62571504-2');
+    gtag('config', 'UA-62571504-2');
 </script>
 
 
 <head>
-  <meta charset="utf-8"/>
-  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
-  <title>Expression Calculator</title>
-  <script src="js/math.min.js"></script>
+    <meta charset="utf-8" />
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+    <title>Expression Calculator</title>
+    <script src="js/math.min.js"></script>
 </head>
 
 
 <script type="text/javascript">
 
 
-// TODO: color schemes
+    // TODO: color schemes?
 
-
-function isLocalStorageSupported() {
-    return typeof(Storage) !== 'undefined';
-}
-
-function get_current_expression() {
-
-/*    
-    if (isLocalStorageSupported()) {
-        var expression = localStorage.getItem(storageName);
-        return expression;
-    }
-*/
-    var urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('expr'))
-    {
-        var expr = atob(urlParams.get('expr'));
-        //console.log(expr);
-        return expr;
+    function isLocalStorageSupported() {
+        return typeof (Storage) !== 'undefined';
     }
 
-    return null;
-}
+    function get_current_expression() {
 
-function set_current_expression(expr) {
-/*    
-    if (isLocalStorageSupported()) {
-        localStorage.setItem(storageName, expr);
+        /*    
+            if (isLocalStorageSupported()) {
+                var expression = localStorage.getItem(storageName);
+                return expression;
+            }
+        */
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('expr')) {
+            var expr = atob(urlParams.get('expr'));
+            //console.log(expr);
+            return expr;
+        }
+
+        return null;
     }
-*/
 
-    // The URLSearchParams constructor interprets plus signs (+) as spaces, which might cause problems.
-    // https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams
+    function set_current_expression(expr) {
+        /*    
+            if (isLocalStorageSupported()) {
+                localStorage.setItem(storageName, expr);
+            }
+        */
 
-    const base64Data = btoa(expr);
-    const encodedBase64Data = encodeURIComponent(base64Data);
+        // The URLSearchParams constructor interprets plus signs (+) as spaces, which might cause problems.
+        // https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams
 
-    history.pushState("", "", "?expr=" + encodedBase64Data);
-}
+        const base64Data = btoa(expr);
+        const encodedBase64Data = encodeURIComponent(base64Data);
+
+        history.pushState("", "", "?expr=" + encodedBase64Data);
+    }
 
 
-window.onpopstate = function(e){
-    console.log("history step");
-    var text_input = document.getElementById("text_input");
-    var expression = get_current_expression();
-    if (expression && text_input) {
-        text_input.value = expression;
+    window.onpopstate = function (e) {
+        console.log("history step");
+        var text_input = document.getElementById("text_input");
+        var expression = get_current_expression();
+        if (expression && text_input) {
+            text_input.value = expression;
+            onKeyPressDoNotUpdateHistory(text_input);
+        }
+
+    }
+
+    function getParam(param) {
+        return new URLSearchParams(window.location.search).get(param);
+    }
+
+    function log_message(txt) {
+        //console.log(txt);
+    }
+
+    // Fast Half Float Conversions algorithm
+    // ftp://ftp.fox-toolkit.org/pub/fasthalffloatconversion.pdf
+    const buffer = new ArrayBuffer(4);
+    const floatView = new Float32Array(buffer);
+    const uint32View = new Uint32Array(buffer);
+
+    const baseTable = new Uint32Array(512);
+    const shiftTable = new Uint32Array(512);
+
+    const mantissaTable = new Uint32Array(2048);
+    const exponentTable = new Uint32Array(64);
+    const offsetTable = new Uint32Array(64);
+
+
+    // Float to U32 conversion
+    const bytes = new Uint8Array(4);
+    const view = new DataView(bytes.buffer);
+
+
+    const storageName = "sm_ecalc";
+
+
+    function init() {
+
+        var coll = document.getElementsByClassName("collapsible");
+        var i;
+
+        for (i = 0; i < coll.length; i++) {
+            //console.log("REG");
+            coll[i].addEventListener("click", function () {
+                //console.log("CLICK!!");
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.display === "block") {
+                    content.style.display = "none";
+                } else {
+                    content.style.display = "block";
+                }
+            });
+        }
+
+
+        var colorScheme = getParam("scheme");
+
+        math.config({ number: 'BigNumber', precision: 128 });
+
+        // http://mathjs.org/docs/core/extension.html
+        math.import({
+            as_float: function (u32) {
+                return castU32ToFloat(u32);
+            },
+            as_half: function (u16) {
+                return castHalfU16ToFloat(u16);
+            },
+            as_uint: function (f32) {
+                return castFloatToU32(f32);
+            }
+
+        })
+
+        for (let i = 0; i < 256; ++i) {
+            const e = i - 127;
+
+            // very small number (0, -0)
+            if (e < -27) {
+                baseTable[i | 0x000] = 0x0000;
+                baseTable[i | 0x100] = 0x8000;
+                shiftTable[i | 0x000] = 24;
+                shiftTable[i | 0x100] = 24;
+
+                // small number (denorm)
+            } else if (e < -14) {
+                baseTable[i | 0x000] = 0x0400 >> (-e - 14);
+                baseTable[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
+                shiftTable[i | 0x000] = -e - 1;
+                shiftTable[i | 0x100] = -e - 1;
+
+                // normal number
+            } else if (e <= 15) {
+                baseTable[i | 0x000] = (e + 15) << 10;
+                baseTable[i | 0x100] = ((e + 15) << 10) | 0x8000;
+                shiftTable[i | 0x000] = 13;
+                shiftTable[i | 0x100] = 13;
+
+                // large number (Infinity, -Infinity)
+            } else if (e < 128) {
+                baseTable[i | 0x000] = 0x7c00;
+                baseTable[i | 0x100] = 0xfc00;
+                shiftTable[i | 0x000] = 24;
+                shiftTable[i | 0x100] = 24;
+
+                // stay (NaN, Infinity, -Infinity)
+            } else {
+                baseTable[i | 0x000] = 0x7c00;
+                baseTable[i | 0x100] = 0xfc00;
+                shiftTable[i | 0x000] = 13;
+                shiftTable[i | 0x100] = 13;
+            }
+        }
+
+
+        mantissaTable[0] = 0;
+        for (let i = 1; i < 1024; ++i) {
+            let m = i << 13;    // zero pad mantissa bits
+            let e = 0;          // zero exponent
+
+            // normalized
+            while ((m & 0x00800000) === 0) {
+                e -= 0x00800000;    // decrement exponent
+                m <<= 1;
+            }
+
+            m &= ~0x00800000;   // clear leading 1 bit
+            e += 0x38800000;    // adjust bias
+
+            mantissaTable[i] = m | e;
+        }
+        for (let i = 1024; i < 2048; ++i) {
+            mantissaTable[i] = 0x38000000 + ((i - 1024) << 13);
+        }
+
+        exponentTable[0] = 0;
+        for (let i = 1; i < 31; ++i) {
+            exponentTable[i] = i << 23;
+        }
+        exponentTable[31] = 0x47800000;
+        exponentTable[32] = 0x80000000;
+        for (let i = 33; i < 63; ++i) {
+            exponentTable[i] = 0x80000000 + ((i - 32) << 23);
+        }
+        exponentTable[63] = 0xc7800000;
+
+        offsetTable[0] = 0;
+        for (let i = 1; i < 64; ++i) {
+            if (i === 32) {
+                offsetTable[i] = 0;
+            } else {
+                offsetTable[i] = 1024;
+            }
+        }
+
+        var text_input = document.getElementById("text_input");
+
+        var expression = get_current_expression();
+        if (expression) {
+            text_input.value = expression;
+        }
+
         onKeyPressDoNotUpdateHistory(text_input);
     }
 
-}
 
-function getParam(param) {
-    return new URLSearchParams(window.location.search).get(param);
-}
-
-function log_message(txt) {
-    //console.log(txt);
-}
-
-// Fast Half Float Conversions algorithm
-// ftp://ftp.fox-toolkit.org/pub/fasthalffloatconversion.pdf
-const buffer = new ArrayBuffer(4);
-const floatView = new Float32Array(buffer);
-const uint32View = new Uint32Array(buffer);
-
-const baseTable = new Uint32Array(512);
-const shiftTable = new Uint32Array(512);
-
-const mantissaTable = new Uint32Array(2048);
-const exponentTable = new Uint32Array(64);
-const offsetTable = new Uint32Array(64);
-
-
-// Float to U32 conversion
-const bytes = new Uint8Array(4);
-const view = new DataView(bytes.buffer);
-
-
-const storageName = "sm_ecalc";
-
-
-function init() {
-
-    var colorScheme = getParam("scheme");
-
-    math.config({ number: 'BigNumber', precision: 128 });
-
-    // http://mathjs.org/docs/core/extension.html
-    math.import({
-    as_float: function (u32) {
-        return castU32ToFloat(u32);
-    },
-    as_half: function (u16) {
-        return castHalfU16ToFloat(u16);
-    },
-    as_uint: function (f32) {
-        return castFloatToU32(f32);
+    // bit-cast float to u32
+    function castFloatToU32(f) {
+        view.setFloat32(0, f);
+        // (value) >>> 0 trick to convert singned to unsigned
+        var i = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+        return i;
     }
 
-    })
+    // bit-cast u32 backt to float
+    function castU32ToFloat(u32) {
+        view.setUint8(0, (u32 >>> 24) & 0xff);
+        view.setUint8(1, (u32 >>> 16) & 0xff);
+        view.setUint8(2, (u32 >>> 8) & 0xff);
+        view.setUint8(3, (u32 >>> 0) & 0xff);
 
-    for(let i = 0; i < 256; ++i) {
-        const e = i - 127;
+        var num = view.getFloat32(0);
+        return num;
+    }
 
-        // very small number (0, -0)
-        if(e < -27) {
-            baseTable[i | 0x000] = 0x0000;
-            baseTable[i | 0x100] = 0x8000;
-            shiftTable[i | 0x000] = 24;
-            shiftTable[i | 0x100] = 24;
+    // convert float to half and cast half to u16
+    function castFloatToHalfU16(num) {
+        floatView[0] = num;
 
-        // small number (denorm)
-        } else if(e < -14) {
-            baseTable[i | 0x000] =  0x0400 >> (-e - 14);
-            baseTable[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
-            shiftTable[i | 0x000] = -e - 1;
-            shiftTable[i | 0x100] = -e - 1;
+        const f = uint32View[0];
+        const e = (f >> 23) & 0x1ff;
+        return baseTable[e] + ((f & 0x007fffff) >> shiftTable[e]);
+    }
 
-        // normal number
-        } else if(e <= 15) {
-            baseTable[i | 0x000] =  (e + 15) << 10;
-            baseTable[i | 0x100] = ((e + 15) << 10) | 0x8000;
-            shiftTable[i | 0x000] = 13;
-            shiftTable[i | 0x100] = 13;
-
-        // large number (Infinity, -Infinity)
-        } else if(e < 128) {
-            baseTable[i | 0x000] = 0x7c00;
-            baseTable[i | 0x100] = 0xfc00;
-            shiftTable[i | 0x000] = 24;
-            shiftTable[i | 0x100] = 24;
-
-        // stay (NaN, Infinity, -Infinity)
-        } else {
-            baseTable[i | 0x000] = 0x7c00;
-            baseTable[i | 0x100] = 0xfc00;
-            shiftTable[i | 0x000] = 13;
-            shiftTable[i | 0x100] = 13;
-        }
+    // cast u16 to half and convert it back to float
+    function castHalfU16ToFloat(float16bits) {
+        const m = float16bits >> 10;
+        uint32View[0] = mantissaTable[offsetTable[m] + (float16bits & 0x3ff)] + exponentTable[m];
+        return floatView[0];
     }
 
 
-    mantissaTable[0] = 0;
-    for(let i = 1; i < 1024; ++i) {
-        let m = i << 13;    // zero pad mantissa bits
-        let e = 0;          // zero exponent
+    // format binaray string
+    function formatBinary(v) {
 
-        // normalized
-        while((m & 0x00800000) === 0) {
-            e -= 0x00800000;    // decrement exponent
-            m <<= 1;
+        var negative = false;
+        if (v.startsWith("-")) {
+            v = v.substring(1);
+            negative = true;
         }
 
-        m &= ~0x00800000;   // clear leading 1 bit
-        e += 0x38800000;    // adjust bias
-
-        mantissaTable[i] = m | e;
-    }
-    for(let i = 1024; i < 2048; ++i) {
-        mantissaTable[i] = 0x38000000 + ((i - 1024) << 13);
-    }
-
-    exponentTable[0] = 0;
-    for(let i = 1; i < 31; ++i) {
-        exponentTable[i] = i << 23;
-    }
-    exponentTable[31] = 0x47800000;
-    exponentTable[32] = 0x80000000;
-    for(let i = 33; i < 63; ++i) {
-        exponentTable[i] = 0x80000000 + ((i - 32) << 23);
-    }
-    exponentTable[63] = 0xc7800000;
-
-    offsetTable[0] = 0;
-    for(let i = 1; i < 64; ++i) {
-        if(i === 32) {
-            offsetTable[i] = 0;
-        } else {
-            offsetTable[i] = 1024;
-        }
-    }
-
-    var text_input = document.getElementById("text_input");
-
-    var expression = get_current_expression();
-    if (expression) {
-        text_input.value = expression;
-    }
-
-    onKeyPressDoNotUpdateHistory(text_input);
-}
-
-
-// bit-cast float to u32
-function castFloatToU32(f) {
-    view.setFloat32(0, f);
-    // (value) >>> 0 trick to convert singned to unsigned
-    var i = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
-    return i;
-}
-
-// bit-cast u32 backt to float
-function castU32ToFloat(u32) {
-    view.setUint8(0, (u32 >>> 24) & 0xff);
-    view.setUint8(1, (u32 >>> 16) & 0xff);
-    view.setUint8(2, (u32 >>> 8) & 0xff);
-    view.setUint8(3, (u32 >>> 0) & 0xff);
-
-    var num = view.getFloat32(0);
-    return num;
-}
-
-// convert float to half and cast half to u16
-function castFloatToHalfU16(num) {
-    floatView[0] = num;
-
-    const f = uint32View[0];
-    const e = (f >> 23) & 0x1ff;
-    return baseTable[e] + ((f & 0x007fffff) >> shiftTable[e]);
-}
-
-// cast u16 to half and convert it back to float
-function castHalfU16ToFloat(float16bits) {
-    const m = float16bits >> 10;
-    uint32View[0] = mantissaTable[offsetTable[m] + (float16bits & 0x3ff)] + exponentTable[m];
-    return floatView[0];
-}
-
-
-// format binaray string
-function formatBinary(v) {
-
-    var negative = false;
-    if (v.startsWith("-")) {
-        v = v.substring(1);
-        negative = true;
-    }
-
-    if (v.startsWith("0b") || v.startsWith("0b")) {
-        v = v.substring(2);
-    }
-
-    log_message("L:" + v.length);
-    var paddingZeroesNum = 8 - (v.length % 8);
-    if (paddingZeroesNum == 8) {
-        paddingZeroesNum = 0;
-    }
-    log_message("P:" + paddingZeroesNum);
-    v = "0".repeat(paddingZeroesNum) + v;
-
-    var spansCount = Math.floor(v.length / 8);
-    var v1 = "";
-    for(var i = 0; i < spansCount; i++)
-    {
-        if (i & 1) {
-            v1 = v1 + '<span class="odd">'  + v.substring(i*8, i*8+8) + '</span>';
-        } else {
-            v1 = v1 + '<span class="even">'  + v.substring(i*8, i*8+8) + '</span>';
-        }
-    }
-
-    if (negative) {
-        v1 = "-" + v1;
-    }
-
-    v = v1 + "b";
-    return v;
-}
-
-
-function formatDecimal(v) {
-    var negative = false;
-    if (v.startsWith("-")) {
-        v = v.substring(1);
-        negative = true;
-    }
-
-    var fractional = ""
-    var dotIndex = v.indexOf(".")
-    if (dotIndex >= 1) {
-        //fractional = v.substring(dotIndex, v.length);
-        fractional = v.substring(dotIndex, dotIndex + 21); // clamp fractional length to 20 digits (. included)
-        v = v.substring(0, dotIndex);
-
-    }
-
-
-    var spansCount = Math.floor(v.length / 3);
-
-
-    var v1 = "";
-    for(var i = 0; i < spansCount; i++)
-    {
-        var p = v.length - 3 - i*3
-        if (i & 1) {
-            v1 = '<span class="odd">'  + v.substring(p, p+3) + '</span>' + v1;
-        } else {
-            v1 = '<span class="even">'  + v.substring(p, p+3) + '</span>' + v1;
-        }
-    }
-
-    var headLen = (v.length % 3);
-
-    if (spansCount & 1) {
-            v1 = '<span class="odd">'  + v.substring(0, headLen) + '</span>' + v1;
-        } else {
-            v1 = '<span class="even">'  + v.substring(0, headLen) + '</span>' + v1;
+        if (v.startsWith("0b") || v.startsWith("0b")) {
+            v = v.substring(2);
         }
 
-
-    v = v1
-    if (negative) {
-        v = "-" + v;
-    }
-
-    v = v + fractional
-
-    return v;
-}
-
-// format hex string
-function formatHex(v) {
-
-    var negative = false;
-    if (v.startsWith("-")) {
-        v = v.substring(1);
-        negative = true;
-    }
-
-    if (v.startsWith("0x") || v.startsWith("0X"))
-    {
-        v = v.substring(2);
-    }
-
-    log_message(v.length);
-    var paddingZeroesNum = 2 - (v.length % 2);
-    if (paddingZeroesNum == 2) {
-        paddingZeroesNum = 0;
-    }
-    log_message(paddingZeroesNum);
-    v = "0".repeat(paddingZeroesNum) + v;
-
-    var spansCount = Math.floor(v.length / 2);
-    var v1 = "";
-    for(var i = 0; i < spansCount; i++)
-    {
-        if (i & 1) {
-            v1 = v1 + '<span class="odd">'  + v.substring(i*2, i*2+2) + '</span>';
-        } else {
-            v1 = v1 + '<span class="even">'  + v.substring(i*2, i*2+2) + '</span>';
+        log_message("L:" + v.length);
+        var paddingZeroesNum = 8 - (v.length % 8);
+        if (paddingZeroesNum == 8) {
+            paddingZeroesNum = 0;
         }
-    }
+        log_message("P:" + paddingZeroesNum);
+        v = "0".repeat(paddingZeroesNum) + v;
 
-    v = "0x" + v1;
-
-    if (negative) {
-        v = "-" + v;
-    }
-
-    return v;
-}
-
-//
-function is_dec_digit(chr) {
-    if (chr == "0" || chr == "1" || chr == "2" ||
-        chr == "3" || chr == "4" || chr == "5" ||
-        chr == "6" || chr == "7" || chr == "8" ||
-        chr == "9") {
-            return true;
-    }
-    return false;
-}
-
-//
-function is_hex_digit(chr) {
-    if (is_dec_digit(chr) ||
-        chr == "a" || chr == "A" ||
-        chr == "b" || chr == "B" ||
-        chr == "c" || chr == "C" ||
-        chr == "d" || chr == "D" ||
-        chr == "e" || chr == "E" ||
-        chr == "f" || chr == "F") {
-            return true;
-    }
-    return false;
-}
-
-//
-function is_binary_number(str) {
-    for(var i = 0; i < str.length; i++) {
-        var chr = str.charAt(i);
-        if (chr != "0" && chr != "1") {
-            return false;
-        }
-    }
-    return true;
-}
-
-// preprocess expression string (replace all hex and binary numbers with proper decimal representation)
-// math.js parser can't parse hex/binary
-//    and replace pow (^) to bitwise xor (^|)
-function preprocessString(text) {
-    var res = [];
-    var num = ""
-    var is_hex = false;
-    for(var i = 0; i < text.length; i++) {
-        var chr = text.charAt(i);
-
-        var j = (i + 1);
-        if (j < text.length) {
-            var nextChr = text.charAt(j);
-            if (num.length == 0 && chr == "0" && 
-                (nextChr == "x" || nextChr == "X"))
-            {
-                is_hex = true;
-                //num = "0x";
-                i+=1;
-                continue;
+        var spansCount = Math.floor(v.length / 8);
+        var v1 = "";
+        for (var i = 0; i < spansCount; i++) {
+            if (i & 1) {
+                v1 = v1 + '<span class="odd">' + v.substring(i * 8, i * 8 + 8) + '</span>';
+            } else {
+                v1 = v1 + '<span class="even">' + v.substring(i * 8, i * 8 + 8) + '</span>';
             }
         }
 
-        var is_digit = is_hex ? is_hex_digit(chr) : is_dec_digit(chr); 
-        if (!is_digit) {
-            if (num && num.length > 0) {
-                var base = is_hex ? 16 : 10;
-                if (chr == "b" && is_binary_number(num)) {
-                    base = 2;
-                    chr = null;
+        if (negative) {
+            v1 = "-" + v1;
+        }
+
+        v = v1 + "b";
+        return v;
+    }
+
+
+    function formatDecimal(v) {
+        var negative = false;
+        if (v.startsWith("-")) {
+            v = v.substring(1);
+            negative = true;
+        }
+
+        var fractional = ""
+        var dotIndex = v.indexOf(".")
+        if (dotIndex >= 1) {
+            //fractional = v.substring(dotIndex, v.length);
+            fractional = v.substring(dotIndex, dotIndex + 21); // clamp fractional length to 20 digits (. included)
+            v = v.substring(0, dotIndex);
+
+        }
+
+
+        var spansCount = Math.floor(v.length / 3);
+
+
+        var v1 = "";
+        for (var i = 0; i < spansCount; i++) {
+            var p = v.length - 3 - i * 3
+            if (i & 1) {
+                v1 = '<span class="odd">' + v.substring(p, p + 3) + '</span>' + v1;
+            } else {
+                v1 = '<span class="even">' + v.substring(p, p + 3) + '</span>' + v1;
+            }
+        }
+
+        var headLen = (v.length % 3);
+
+        if (spansCount & 1) {
+            v1 = '<span class="odd">' + v.substring(0, headLen) + '</span>' + v1;
+        } else {
+            v1 = '<span class="even">' + v.substring(0, headLen) + '</span>' + v1;
+        }
+
+
+        v = v1
+        if (negative) {
+            v = "-" + v;
+        }
+
+        v = v + fractional
+
+        return v;
+    }
+
+    // format hex string
+    function formatHex(v) {
+
+        var negative = false;
+        if (v.startsWith("-")) {
+            v = v.substring(1);
+            negative = true;
+        }
+
+        if (v.startsWith("0x") || v.startsWith("0X")) {
+            v = v.substring(2);
+        }
+
+        log_message(v.length);
+        var paddingZeroesNum = 2 - (v.length % 2);
+        if (paddingZeroesNum == 2) {
+            paddingZeroesNum = 0;
+        }
+        log_message(paddingZeroesNum);
+        v = "0".repeat(paddingZeroesNum) + v;
+
+        var spansCount = Math.floor(v.length / 2);
+        var v1 = "";
+        for (var i = 0; i < spansCount; i++) {
+            if (i & 1) {
+                v1 = v1 + '<span class="odd">' + v.substring(i * 2, i * 2 + 2) + '</span>';
+            } else {
+                v1 = v1 + '<span class="even">' + v.substring(i * 2, i * 2 + 2) + '</span>';
+            }
+        }
+
+        v = "0x" + v1;
+
+        if (negative) {
+            v = "-" + v;
+        }
+
+        return v;
+    }
+
+    //
+    function is_dec_digit(chr) {
+        if (chr == "0" || chr == "1" || chr == "2" ||
+            chr == "3" || chr == "4" || chr == "5" ||
+            chr == "6" || chr == "7" || chr == "8" ||
+            chr == "9") {
+            return true;
+        }
+        return false;
+    }
+
+    //
+    function is_hex_digit(chr) {
+        if (is_dec_digit(chr) ||
+            chr == "a" || chr == "A" ||
+            chr == "b" || chr == "B" ||
+            chr == "c" || chr == "C" ||
+            chr == "d" || chr == "D" ||
+            chr == "e" || chr == "E" ||
+            chr == "f" || chr == "F") {
+            return true;
+        }
+        return false;
+    }
+
+    //
+    function is_binary_number(str) {
+        for (var i = 0; i < str.length; i++) {
+            var chr = str.charAt(i);
+            if (chr != "0" && chr != "1") {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // preprocess expression string (replace all hex and binary numbers with proper decimal representation)
+    // math.js parser can't parse hex/binary
+    //    and replace pow (^) to bitwise xor (^|)
+    function preprocessString(text) {
+        var res = [];
+        var num = ""
+        var is_hex = false;
+        for (var i = 0; i < text.length; i++) {
+            var chr = text.charAt(i);
+
+            var j = (i + 1);
+            if (j < text.length) {
+                var nextChr = text.charAt(j);
+                if (num.length == 0 && chr == "0" &&
+                    (nextChr == "x" || nextChr == "X")) {
+                    is_hex = true;
+                    //num = "0x";
+                    i += 1;
+                    continue;
                 }
-                if (base != 10) {
-                    log_message("parse(" + num + ", " + base + ")");
-                    if (base == 2)
-                    {
-                        res.push(BigInt("0b" + num).toString());
-                    } else if (base == 8)
-                    {
-                        res.push(BigInt("0o" + num).toString());
-                    } else if (base == 16)
-                    {
-                        res.push(BigInt("0x" + num).toString());
-                    } else
-                    {
-                        // fallback to lowprecision convertor
-                        res.push(parseInt(num, base).toString());
+            }
+
+            var is_digit = is_hex ? is_hex_digit(chr) : is_dec_digit(chr);
+            if (!is_digit) {
+                if (num && num.length > 0) {
+                    var base = is_hex ? 16 : 10;
+                    if (chr == "b" && is_binary_number(num)) {
+                        base = 2;
+                        chr = null;
                     }
-                    
-                } else {
-                    res.push(num);
+                    if (base != 10) {
+                        log_message("parse(" + num + ", " + base + ")");
+                        if (base == 2) {
+                            res.push(BigInt("0b" + num).toString());
+                        } else if (base == 8) {
+                            res.push(BigInt("0o" + num).toString());
+                        } else if (base == 16) {
+                            res.push(BigInt("0x" + num).toString());
+                        } else {
+                            // fallback to lowprecision convertor
+                            res.push(parseInt(num, base).toString());
+                        }
+
+                    } else {
+                        res.push(num);
+                    }
+
+                    num = "";
+                    is_hex = false;
                 }
-                
-                num = "";
-                is_hex = false;
+
+                if (chr) {
+                    res.push(chr);
+                }
+            } else {
+                num += chr;
             }
+        }
 
-            if (chr) {
-                res.push(chr);
+        if (num && num.length > 0) {
+            var base = is_hex ? 16 : 10;
+            if (chr == "b" && is_binary_number(num)) {
+                base = 2;
+                chr = null;
             }
-        } else {
-            num += chr;
-        }
-    }
-
-    if (num && num.length > 0) {
-        var base = is_hex ? 16 : 10;
-        if (chr == "b" && is_binary_number(num)) {
-            base = 2;
-            chr = null;
-        }
-        if (base != 10) {
-            log_message("parse(" + num + ", " + base + ")");
-            if (base == 2)
-            {
-                res.push(BigInt("0b" + num).toString());
-            } else if (base == 8)
-            {
-                res.push(BigInt("0o" + num).toString());
-            } else if (base == 16)
-            {
-                res.push(BigInt("0x" + num).toString());
-            } else
-            {
-                // fallback to lowprecision convertor
-                res.push(parseInt(num, base).toString());
+            if (base != 10) {
+                log_message("parse(" + num + ", " + base + ")");
+                if (base == 2) {
+                    res.push(BigInt("0b" + num).toString());
+                } else if (base == 8) {
+                    res.push(BigInt("0o" + num).toString());
+                } else if (base == 16) {
+                    res.push(BigInt("0x" + num).toString());
+                } else {
+                    // fallback to lowprecision convertor
+                    res.push(parseInt(num, base).toString());
+                }
+            } else {
+                res.push(num);
             }
-        } else {
-            res.push(num);
+            num = "";
+            is_hex = false;
         }
-        num = "";
-        is_hex = false;
+
+        // convert back to string
+        var result = "";
+        for (var i = 0; i < res.length; i++) {
+            result += res[i];
+        }
+
+        // http://mathjs.org/docs/expressions/syntax.html
+        // replace pow (^) to bitwise xor (^|)
+        result = result.replace("^", "^|");
+
+
+        console.log("math.js = '" + result + "'")
+
+        return result;
     }
 
-    // convert back to string
-    var result = "";
-    for(var i = 0; i < res.length; i++) {
-        result += res[i];
-    }
 
-    // http://mathjs.org/docs/expressions/syntax.html
-    // replace pow (^) to bitwise xor (^|)
-    result = result.replace("^", "^|");
+    function copyTextToClipboard(text) {
+        var textArea = document.createElement("textarea");
 
+        //
+        // *** This styling is an extra step which is likely not required. ***
+        //
+        // Why is it here? To ensure:
+        // 1. the element is able to have focus and selection.
+        // 2. if element was to flash render it has minimal visual impact.
+        // 3. less flakyness with selection and copying which **might** occur if
+        //    the textarea element is not visible.
+        //
+        // The likelihood is the element won't even render, not even a flash,
+        // so some of these are just precautions. However in IE the element
+        // is visible whilst the popup box asking the user for permission for
+        // the web page to copy to the clipboard.
+        //
 
-    console.log("math.js = '" + result + "'")
+        // Place in top-left corner of screen regardless of scroll position.
+        textArea.style.position = 'fixed';
+        textArea.style.top = 0;
+        textArea.style.left = 0;
 
-    return result;
-}
+        // Ensure it has a small width and height. Setting to 1px / 1em
+        // doesn't work as this gives a negative w/h on some browsers.
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
 
+        // We don't need padding, reducing the size if it does flash render.
+        textArea.style.padding = 0;
 
-function copyTextToClipboard(text) {
-  var textArea = document.createElement("textarea");
+        // Clean up any borders.
+        textArea.style.border = 'none';
+        textArea.style.outline = 'none';
+        textArea.style.boxShadow = 'none';
 
-  //
-  // *** This styling is an extra step which is likely not required. ***
-  //
-  // Why is it here? To ensure:
-  // 1. the element is able to have focus and selection.
-  // 2. if element was to flash render it has minimal visual impact.
-  // 3. less flakyness with selection and copying which **might** occur if
-  //    the textarea element is not visible.
-  //
-  // The likelihood is the element won't even render, not even a flash,
-  // so some of these are just precautions. However in IE the element
-  // is visible whilst the popup box asking the user for permission for
-  // the web page to copy to the clipboard.
-  //
-
-  // Place in top-left corner of screen regardless of scroll position.
-  textArea.style.position = 'fixed';
-  textArea.style.top = 0;
-  textArea.style.left = 0;
-
-  // Ensure it has a small width and height. Setting to 1px / 1em
-  // doesn't work as this gives a negative w/h on some browsers.
-  textArea.style.width = '2em';
-  textArea.style.height = '2em';
-
-  // We don't need padding, reducing the size if it does flash render.
-  textArea.style.padding = 0;
-
-  // Clean up any borders.
-  textArea.style.border = 'none';
-  textArea.style.outline = 'none';
-  textArea.style.boxShadow = 'none';
-
-  // Avoid flash of white box if rendered for any reason.
-  textArea.style.background = 'transparent';
+        // Avoid flash of white box if rendered for any reason.
+        textArea.style.background = 'transparent';
 
 
-  textArea.value = text;
+        textArea.value = text;
 
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  try {
-    var successful = document.execCommand('copy');
-    var msg = successful ? 'successful' : 'unsuccessful';
-    log_message('Copying text command was ' + msg);
-  } catch (err) {
-    log_message('Oops, unable to copy. Err: ' + err.message);
-  }
-
-  document.body.removeChild(textArea);
-}
-
-
-function copyToClipboard(elementName) {
-    var element = document.getElementById(elementName);
-
-    copyTextToClipboard(element.innerText);
-}
-
-function onKeyUp(event) {
-    if (event.keyCode === 13) {
-        log_message("Enter pressed");
-        var dout = document.getElementById("dec_out");
-        log_message(dout.innerText)
-        var text_input = document.getElementById("text_input");
-        text_input.value = dout.innerText;
-    }
-}
-
-function onKeyPressDoNotUpdateHistory(element) {
-
-    var text = preprocessString(element.value);
-
-    log_message("in: " + text);
-
-    var dout = document.getElementById("dec_out");
-
-    var bout = document.getElementById("bin_out");
-    var hout = document.getElementById("hex_out");
-    var aout = document.getElementById("ascii_out");
-    
-    var fout_f = document.getElementById("ieee32_out_f");
-    var fout_h = document.getElementById("ieee32_out_h");
-    var fout_s = document.getElementById("ieee32_out_s");
-    var fout_e = document.getElementById("ieee32_out_e");
-    var fout_m = document.getElementById("ieee32_out_m");
-
-
-    var hout_f = document.getElementById("ieee16_out_f");
-    var hout_h = document.getElementById("ieee16_out_h");
-    var hout_s = document.getElementById("ieee16_out_s");
-    var hout_e = document.getElementById("ieee16_out_e");
-    var hout_m = document.getElementById("ieee16_out_m");
-    
-    var texout = document.getElementById("tex_out");
-    
-
-    bout.innerHTML = "N/A";
-    hout.innerHTML = "N/A";
-    aout.innerHTML = "N/A";
-
-    fout_f.innerHTML = "N/A";
-    fout_h.innerHTML = "N/A";
-    fout_s.innerHTML = "N/A";
-    fout_e.innerHTML = "N/A";
-    fout_m.innerHTML = "N/A";
-
-    hout_f.innerHTML = "N/A";
-    hout_h.innerHTML = "N/A";
-    hout_s.innerHTML = "N/A";
-    hout_e.innerHTML = "N/A";
-    hout_m.innerHTML = "N/A";
-
-    texout.innerHTML = "N/A";
-
-
-    try {
-        var node = math.parse(text)         // parse expression into a node tree
-        const code = node.compile()           // compile the node tree
-        var res = code.evaluate()      // evaluate the code with an optional scope        
-        //var res = math.evaluate(text);
-    }
-
-    catch(err) {
-        //console.log("err: '" + err.message + "'");
-        dout.innerHTML = err.message;
-        return;
-    }
-
-    if (node)
-    {
-        //LaTeX 
-        texout.innerHTML = node.toTex()
-        
-
-    }
-
-    if (res)
-    {
-        log_message("e: '" + text + "'");
-        log_message("r: '" + res + "'");
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
 
         try {
+            var successful = document.execCommand('copy');
+            var msg = successful ? 'successful' : 'unsuccessful';
+            log_message('Copying text command was ' + msg);
+        } catch (err) {
+            log_message('Oops, unable to copy. Err: ' + err.message);
+        }
 
-            var bigres = math.bignumber(res);
-            var big_31 = math.bignumber(31);
-            var big_128 = math.bignumber(128);
+        document.body.removeChild(textArea);
+    }
 
-        //https://unpkg.com/mathjs@5.4.1/dist/math.js
-            bout.innerHTML = formatBinary(bigres.floor().toBinary());
-            hout.innerHTML = formatHex(bigres.floor().toHexadecimal());
-            //dout.innerHTML = math.format(bigres, {notation: "fixed"});
-            dout.innerHTML = formatDecimal(bigres.toString());
 
-            if (bigres.greaterThan(big_31) && bigres.lessThan(big_128)) {
-                var ascii = String.fromCharCode(bigres.floor().toNumber());
-                aout.innerHTML = ascii;
-            } else {
-                aout.innerHTML = "?";
+    function copyToClipboard(elementName) {
+        var element = document.getElementById(elementName);
+
+        copyTextToClipboard(element.innerText);
+    }
+
+    function onKeyUp(event) {
+        if (event.keyCode === 13) {
+            log_message("Enter pressed");
+            var dout = document.getElementById("dec_out");
+            log_message(dout.innerText)
+            var text_input = document.getElementById("text_input");
+            text_input.value = dout.innerText;
+        }
+    }
+
+    function onKeyPressDoNotUpdateHistory(element) {
+
+        var text = preprocessString(element.value);
+
+        log_message("in: " + text);
+
+        var dout = document.getElementById("dec_out");
+
+        var bout = document.getElementById("bin_out");
+        var hout = document.getElementById("hex_out");
+        var aout = document.getElementById("ascii_out");
+
+        var fout_f = document.getElementById("ieee32_out_f");
+        var fout_h = document.getElementById("ieee32_out_h");
+        var fout_s = document.getElementById("ieee32_out_s");
+        var fout_e = document.getElementById("ieee32_out_e");
+        var fout_m = document.getElementById("ieee32_out_m");
+
+
+        var hout_f = document.getElementById("ieee16_out_f");
+        var hout_h = document.getElementById("ieee16_out_h");
+        var hout_s = document.getElementById("ieee16_out_s");
+        var hout_e = document.getElementById("ieee16_out_e");
+        var hout_m = document.getElementById("ieee16_out_m");
+
+        var texout = document.getElementById("tex_out");
+
+
+        bout.innerHTML = "N/A";
+        hout.innerHTML = "N/A";
+        aout.innerHTML = "N/A";
+
+        fout_f.innerHTML = "N/A";
+        fout_h.innerHTML = "N/A";
+        fout_s.innerHTML = "N/A";
+        fout_e.innerHTML = "N/A";
+        fout_m.innerHTML = "N/A";
+
+        hout_f.innerHTML = "N/A";
+        hout_h.innerHTML = "N/A";
+        hout_s.innerHTML = "N/A";
+        hout_e.innerHTML = "N/A";
+        hout_m.innerHTML = "N/A";
+
+        texout.innerHTML = "N/A";
+
+
+        try {
+            var node = math.parse(text)         // parse expression into a node tree
+            const code = node.compile()           // compile the node tree
+            var res = code.evaluate()      // evaluate the code with an optional scope        
+            //var res = math.evaluate(text);
+        }
+
+        catch (err) {
+            //console.log("err: '" + err.message + "'");
+            dout.innerHTML = err.message;
+            return;
+        }
+
+        if (node) {
+            //LaTeX 
+            texout.innerHTML = node.toTex()
+
+
+        }
+
+        if (res) {
+            log_message("e: '" + text + "'");
+            log_message("r: '" + res + "'");
+
+            try {
+
+                var bigres = math.bignumber(res);
+                var big_31 = math.bignumber(31);
+                var big_128 = math.bignumber(128);
+
+                //https://unpkg.com/mathjs@5.4.1/dist/math.js
+                bout.innerHTML = formatBinary(bigres.floor().toBinary());
+                hout.innerHTML = formatHex(bigres.floor().toHexadecimal());
+                //dout.innerHTML = math.format(bigres, {notation: "fixed"});
+                dout.innerHTML = formatDecimal(bigres.toString());
+
+                if (bigres.greaterThan(big_31) && bigres.lessThan(big_128)) {
+                    var ascii = String.fromCharCode(bigres.floor().toNumber());
+                    aout.innerHTML = ascii;
+                } else {
+                    aout.innerHTML = "?";
+                }
+
+                var dbl = bigres.toNumber();
+                var flt = Math.fround(dbl);
+
+                fout_f.innerHTML = flt.toString();
+
+                var flt_int = castFloatToU32(flt);
+                log_message("fi:" + flt_int);
+                fout_h.innerHTML = formatHex(flt_int.toString(16));
+
+                var sign = (flt_int >> 31) & 1;
+                var exp = ((flt_int & 0x7f800000) >> 23) & 0xff;
+                var mantisa = (flt_int & 0x007fffff);
+
+                fout_s.innerHTML = sign;
+                fout_e.innerHTML = (exp - 127);
+                fout_m.innerHTML = mantisa;
+
+                //hout_h.innerHTML = formatHex(half_int.toString(16));
+
+                var half_int = castFloatToHalfU16(flt);
+                log_message("c:" + half_int);
+
+                hout_h.innerHTML = formatHex(half_int.toString(16));
+
+                hout_f.innerHTML = castHalfU16ToFloat(half_int);
+
+                var hsign = (half_int >> 15) & 1;
+                var hexp = ((half_int & 0x7c00) >> 10) & 0x1f;
+                var hmantisa = (half_int & 0x03ff);
+
+                hout_s.innerHTML = hsign;
+                hout_e.innerHTML = (hexp - 15);
+                hout_m.innerHTML = hmantisa;
+
+
+            }
+            catch (err) {
+                log_message("err: '" + err.message + "'");
+                dout.innerHTML = res;
             }
 
-            var dbl = bigres.toNumber();
-            var flt = Math.fround(dbl);
 
-            fout_f.innerHTML = flt.toString();
-
-            var flt_int = castFloatToU32(flt);
-            log_message("fi:" + flt_int);
-            fout_h.innerHTML = formatHex(flt_int.toString(16));
-            
-            var sign = (flt_int >> 31) & 1;
-            var exp = ((flt_int & 0x7f800000) >> 23) & 0xff;
-            var mantisa = (flt_int & 0x007fffff);
-
-            fout_s.innerHTML = sign;
-            fout_e.innerHTML = (exp - 127);
-            fout_m.innerHTML = mantisa;
-
-            //hout_h.innerHTML = formatHex(half_int.toString(16));
-
-            var half_int = castFloatToHalfU16(flt);
-            log_message("c:" + half_int);
-
-            hout_h.innerHTML = formatHex(half_int.toString(16));
-
-            hout_f.innerHTML = castHalfU16ToFloat(half_int);
-
-            var hsign = (half_int >> 15) & 1;
-            var hexp = ((half_int & 0x7c00) >> 10) & 0x1f;
-            var hmantisa = (half_int & 0x03ff);
-
-            hout_s.innerHTML = hsign;
-            hout_e.innerHTML = (hexp - 15);
-            hout_m.innerHTML = hmantisa;
-
-
+        } else {
+            dout.innerHTML = "No result";
         }
-        catch(err) {
-            log_message("err: '" + err.message + "'");
-            dout.innerHTML = res;
-        }
-
-
-    } else
-    {
-        dout.innerHTML = "No result";
     }
-}
 
 
 
-function onKeyPress(element) {
-    set_current_expression(element.value);
-    onKeyPressDoNotUpdateHistory(element);
-}
+    function onKeyPress(element) {
+        set_current_expression(element.value);
+        onKeyPressDoNotUpdateHistory(element);
+    }
 
 
 </script>
 
 
 <style type="text/css" media="screen">
+    body {
+        background-color: #000080;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+        font-size: 16px;
+        color: #ffff00;
+        font-style: normal;
+        font-variant: normal;
+    }
 
-body {
-    background-color: #000080;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
-	font-size: 16px;
-    color: #ffff00;
-	font-style: normal;
-    font-variant: normal;
-}
+    input {
+        background-color: #008080;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+        font-size: 16px;
+        color: #c0c0c0;
+        font-style: normal;
+        font-variant: normal;
+        width: 100%;
+        padding-right: 10px;
+        -moz-box-sizing: border-box;
+        -webkit-box-sizing: border-box;
+        box-sizing: border-box;
+    }
 
-input{
-    background-color: #008080;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
-	font-size: 16px;
-    color: #c0c0c0;
-	font-style: normal;
-    font-variant: normal;
-    width: 100%;
-    padding-right:10px;
-    -moz-box-sizing: border-box; 
-    -webkit-box-sizing: border-box;     
-    box-sizing: border-box;     
-}
+    table {
+        background-color: #c0c0c0;
+        color: #000000;
+    }
 
-table {
-    background-color: #c0c0c0;
-    color: #000000;
-}
+    /* Style the button that is used to open and close the collapsible content */
+    .collapsible {
+        background-color: #000080;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+        color: #ffffff;
+        font-size: 10px;
+        cursor: pointer;
+        padding: 8px;
+        border: none;
+        text-align: left;
+        outline: none;
+    }
 
-.result {
-    background-color: #a0a0a0;
-    min-width:500px;
-}
+    .active,
+    .collapsible:hover {
+        color: #ffff00;
+    }
 
-.yellow {
-    color: #ffff00;
-}
-
-.yellow_small {
-    color: #ffff00;
-    font-size: 10px;
-}
-
-.white_small {
-    color: #ffffff;
-    font-size: 10px;
-}
-
-.gray_small {
-    color: #303030;
-    font-size: 10px;
-}
-
+    .small_pad {
+        padding: 8px;
+        color: #ffffff;
+        font-size: 10px;
+    }
 
 
-.white {
-    color: #ffffff;
-}
 
-.small:visited {
-    color: #ffffff;
-}
+    /* Style the collapsible content. Note: hidden by default */
+    .content {
+        padding: 0 18px;
+        display: none;
+        overflow: hidden;
+        background-color: #000080;
+    }
 
-.small {
-    color: #ffffff;
-    font-size: 10px;
-}
+    .result {
+        background-color: #a0a0a0;
+        min-width: 500px;
+    }
 
+    .yellow {
+        color: #ffff00;
+    }
 
-.odd {
-   color: #000000;
-}
+    .yellow_small {
+        color: #ffff00;
+        font-size: 10px;
+    }
 
-.even {
-   color: #505050;
-}
+    .white_small {
+        color: #ffffff;
+        font-size: 10px;
+    }
 
-.btn_copy {
-    display:block;
-    min-width:20px;
-    min-width:20px;
-    width: 20px;
-    height: 20px;
-    
-    background:url(./img/copy.svg) no-repeat; 
-    cursor:pointer;
-    border:none;
-    
-}
-
-.btn_copy:hover {
-  background-color: #b0b0b0;
-}
+    .gray_small {
+        color: #303030;
+        font-size: 10px;
+    }
 
 
+
+    .white {
+        color: #ffffff;
+    }
+
+    .small:visited {
+        color: #ffffff;
+    }
+
+    .small {
+        color: #ffffff;
+        font-size: 10px;
+    }
+
+
+    .odd {
+        color: #000000;
+    }
+
+    .even {
+        color: #505050;
+    }
+
+    .btn_copy {
+        display: block;
+        min-width: 20px;
+        min-width: 20px;
+        width: 20px;
+        height: 20px;
+
+        background: url(./img/copy.svg) no-repeat;
+        cursor: pointer;
+        border: none;
+
+    }
+
+    .btn_copy:hover {
+        background-color: #b0b0b0;
+    }
 </style>
 
 <body onload="init();">
 
-<div>
+    <div>
 
 
-    <table>
+        <table>
             <tr>
                 <td class="yellow">Expression</td>
             </tr>
@@ -871,30 +902,36 @@ table {
                 </td>
             </tr>
             <tr>
-                <td>                        
+                <td>
                     <table>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Decimal" target="_blank">Dec</a></span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Decimal"
+                                        target="_blank">Dec</a></span></td>
                             <td class="result" id=dec_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('dec_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Hexadecimal" target="_blank">Hex</a></span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Hexadecimal"
+                                        target="_blank">Hex</a></span></td>
                             <td class="result" id=hex_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('hex_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Binary_number" target="_blank">Bin</a></span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Binary_number"
+                                        target="_blank">Bin</a></span></td>
                             <td class="result" id=bin_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('bin_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/ASCII#Character_set" target="_blank">ASCII</a></span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/ASCII#Character_set"
+                                        target="_blank">ASCII</a></span></td>
                             <td class="result" id=ascii_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ascii_out')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format" target="_blank">IEEE 754 (single)</a></span></td>
+                            <td><span class="white"><a
+                                        href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format"
+                                        target="_blank">IEEE 754 (single)</a></span></td>
                             <td class="result" id=ieee32_out_f>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_f')" /></td>
                         </tr>
@@ -919,7 +956,9 @@ table {
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee32_out_m')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/Half-precision_floating-point_format" target="_blank">IEEE 754 (half)</a></span></td>
+                            <td><span class="white"><a
+                                        href="https://en.wikipedia.org/wiki/Half-precision_floating-point_format"
+                                        target="_blank">IEEE 754 (half)</a></span></td>
                             <td class="result" id=ieee16_out_f>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_f')" /></td>
                         </tr>
@@ -944,7 +983,8 @@ table {
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('ieee16_out_m')" /></td>
                         </tr>
                         <tr>
-                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/LaTeX" target="_blank">LaTeX</a></span></td>
+                            <td><span class="white"><a href="https://en.wikipedia.org/wiki/LaTeX"
+                                        target="_blank">LaTeX</a></span></td>
                             <td class="result" id=tex_out>-</td>
                             <td><button type="button" class="btn_copy" onclick="copyToClipboard('tex_out')" /></td>
                         </tr>
@@ -954,137 +994,144 @@ table {
             </tr>
         </table>
 
-</div>
+    </div>
 
-<div>
-        <a class="small" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev (v1.131)</a><br>
-</div>
+    <div>
+        <a class="small_pad" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev
+            (v1.3)</a><br>
+    </div>
 
-<div>
-    <table>
-        <tr>
-            <td class="yellow_small">Function</td>
-            <td class="yellow_small">Description</td>
-        </tr>
-        <tr>
-            <td><span class="white_small">as_float(x)</span></td>
-            <td><span class="gray_small">Interprets the bit pattern of x as a floating-point number</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">as_half(x)</span></td>
-            <td><span class="gray_small">Interprets the bit pattern of x as a fp16 floating-point number</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">as_uint(x)</span></td>
-            <td><span class="gray_small">Interprets the bit pattern of x as an unsigned integer</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">abs(x)</span></td>
-            <td><span class="gray_small">Calculate the absolute value of a number</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">ceil(x)</span></td>
-            <td><span class="gray_small">Returns the smallest integer value that is greater than or equal to the specified value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">exp(x)</span></td>
-            <td><span class="gray_small">Calculate the exponential of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">floor(x)</span></td>
-            <td><span class="gray_small">Returns the largest integer that is less than or equal to the specified value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">log(x, base)</span></td>
-            <td><span class="gray_small">Calculate the logarithm of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">log10(x)</span></td>
-            <td><span class="gray_small">Calculate the 10-base logarithm of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">log2(x)</span></td>
-            <td><span class="gray_small">Calculate the 2-base of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">pow(x)</span></td>
-            <td><span class="gray_small">Calculates the power of x to y</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">sqrt(x)</span></td>
-            <td><span class="gray_small">Calculate the square root of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">^</span></td>
-            <td><span class="gray_small">Bitwise XOR</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">|</span></td>
-            <td><span class="gray_small">Bitwise OR</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">&#38;</span></td>
-            <td><span class="gray_small">Bitwise AND</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">&#60;&#60;</span></td>
-            <td><span class="gray_small">Bitwise shift left</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">&#62;&#62;</span></td>
-            <td><span class="gray_small">Bitwise shift right</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">acos(x)</span></td>
-            <td><span class="gray_small">Calculate the inverse cosine of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">asin(x)</span></td>
-            <td><span class="gray_small">Calculate the inverse sine of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">atan(x)</span></td>
-            <td><span class="gray_small">Calculate the inverse tangent of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">cos(x)</span></td>
-            <td><span class="gray_small">Calculate the cosine of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">sin(x)</span></td>
-            <td><span class="gray_small">Calculate the sine of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">atan2(x,y)</span></td>
-            <td><span class="gray_small">Calculate the inverse tangent function with two arguments, y/x</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">tan(x)</span></td>
-            <td><span class="gray_small">Calculate the tangent of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white">cot(x)</span></td>
-            <td><span class="gray_small">Calculate the cotangent of a value</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">[0, 1, 2]</span></td>
-            <td><span class="gray_small">Vector3 definition</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">dot(X, Y)</span></td>
-            <td><span class="gray_small">Calculate the dot product of two vectors</span></td>
-        </tr>
-        <tr>
-            <td><span class="white_small">cross(X, Y)</span></td>
-            <td><span class="gray_small">Calculate the cross product for two vectors in three dimensional space</span></td>
-        </tr>
-    </table>
+    <button type="button" class="collapsible">Quick cheat sheet</button>
+    <div class="content">
+        <table>
+            <tr>
+                <td class="yellow_small">Function</td>
+                <td class="yellow_small">Description</td>
+            </tr>
+            <tr>
+                <td><span class="white_small">as_float(x)</span></td>
+                <td><span class="gray_small">Interprets the bit pattern of x as a floating-point number</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">as_half(x)</span></td>
+                <td><span class="gray_small">Interprets the bit pattern of x as a fp16 floating-point number</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">as_uint(x)</span></td>
+                <td><span class="gray_small">Interprets the bit pattern of x as an unsigned integer</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">abs(x)</span></td>
+                <td><span class="gray_small">Calculate the absolute value of a number</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">ceil(x)</span></td>
+                <td><span class="gray_small">Returns the smallest integer value that is greater than or equal to the
+                        specified value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">exp(x)</span></td>
+                <td><span class="gray_small">Calculate the exponential of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">floor(x)</span></td>
+                <td><span class="gray_small">Returns the largest integer that is less than or equal to the specified
+                        value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">log(x, base)</span></td>
+                <td><span class="gray_small">Calculate the logarithm of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">log10(x)</span></td>
+                <td><span class="gray_small">Calculate the 10-base logarithm of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">log2(x)</span></td>
+                <td><span class="gray_small">Calculate the 2-base of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">pow(x)</span></td>
+                <td><span class="gray_small">Calculates the power of x to y</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">sqrt(x)</span></td>
+                <td><span class="gray_small">Calculate the square root of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">^</span></td>
+                <td><span class="gray_small">Bitwise XOR</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">|</span></td>
+                <td><span class="gray_small">Bitwise OR</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">&#38;</span></td>
+                <td><span class="gray_small">Bitwise AND</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">&#60;&#60;</span></td>
+                <td><span class="gray_small">Bitwise shift left</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">&#62;&#62;</span></td>
+                <td><span class="gray_small">Bitwise shift right</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">acos(x)</span></td>
+                <td><span class="gray_small">Calculate the inverse cosine of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">asin(x)</span></td>
+                <td><span class="gray_small">Calculate the inverse sine of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">atan(x)</span></td>
+                <td><span class="gray_small">Calculate the inverse tangent of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">cos(x)</span></td>
+                <td><span class="gray_small">Calculate the cosine of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">sin(x)</span></td>
+                <td><span class="gray_small">Calculate the sine of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">atan2(x,y)</span></td>
+                <td><span class="gray_small">Calculate the inverse tangent function with two arguments, y/x</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">tan(x)</span></td>
+                <td><span class="gray_small">Calculate the tangent of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white">cot(x)</span></td>
+                <td><span class="gray_small">Calculate the cotangent of a value</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">[0, 1, 2]</span></td>
+                <td><span class="gray_small">Vector3 definition</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">dot(X, Y)</span></td>
+                <td><span class="gray_small">Calculate the dot product of two vectors</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">cross(X, Y)</span></td>
+                <td><span class="gray_small">Calculate the cross product for two vectors in three dimensional
+                        space</span></td>
+            </tr>
+        </table>
 
 
-    <a class="small" href="https://mathjs.org/docs/reference/functions.html" target="_blank">full list of functions (powered by math.js)</a>
-    
-</div>
+        <a class="small" href="https://mathjs.org/docs/reference/functions.html" target="_blank">full list of functions
+            (powered by math.js)</a>
+
+    </div>
 
 
 </body>
+
 </html>
