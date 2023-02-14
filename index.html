@@ -527,10 +527,11 @@
 
         // http://mathjs.org/docs/expressions/syntax.html
         // replace pow (^) to bitwise xor (^|)
-        result = result.replace("^", "^|");
+        //console.log("pre = '" + result + "'")
+        result = result.replaceAll("^", "^|");
 
 
-        console.log("math.js = '" + result + "'")
+        console.log("math.js request = '" + result + "'");
 
         return result;
     }
@@ -678,6 +679,7 @@
         }
 
         if (res) {
+            console.log("math.js response = '" + res + "'");
             log_message("e: '" + text + "'");
             log_message("r: '" + res + "'");
 
@@ -998,7 +1000,7 @@
 
     <div>
         <a class="small_pad" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev
-            (v1.3)</a><br>
+            (v1.31)</a><br>
     </div>
 
     <button type="button" class="collapsible">Quick cheat sheet</button>
