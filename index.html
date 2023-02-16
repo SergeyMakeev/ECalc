@@ -130,15 +130,32 @@
 
         // http://mathjs.org/docs/core/extension.html
         math.import({
-            as_float: function (u32) {
-                return castU32ToFloat(u32);
+            u32_to_f32: function (u32) {
+                var r = castU32ToFloat(u32 >>> 0);
+                console.log("u32_to_f32(" + u32 + ") = ", r);
+                return r;
             },
-            as_half: function (u16) {
-                return castHalfU16ToFloat(u16);
+            u16_to_f32: function (u16) {
+                var r = castHalfU16ToFloat(u16);
+                console.log("u16_to_f32(" + u16 + ") = ", r);
+                return r;
             },
-            as_uint: function (f32) {
-                return castFloatToU32(f32);
-            }
+            f32_to_u32: function (f32) {
+                var r = castFloatToU32(f32);
+                console.log("f32_to_u32(" + f32 + ") = ", r);
+                return r;
+            },
+            u32_to_i32: function (u32) {
+                var r = castU32ToI32(u32 >>> 0);
+                console.log("u32_to_i32(" + u32 + ") = ", r);
+                return r;
+            },
+            i32_to_u32: function (i32) {
+                var r = castI32ToU32(i32 >> 0);
+                console.log("i32_to_u32(" + i32 + ") = ", r);
+                return r;
+            },
+
 
         })
 
@@ -234,6 +251,22 @@
     }
 
 
+    // bit-cast u32 to i32
+    function castU32ToI32(u32) {
+        view.setUint8(0, (u32 >>> 24) & 0xff);
+        view.setUint8(1, (u32 >>> 16) & 0xff);
+        view.setUint8(2, (u32 >>> 8) & 0xff);
+        view.setUint8(3, (u32 >>> 0) & 0xff);
+        return view.getInt32();
+    }
+
+    // bit-cast i32 to u32
+    function castI32ToU32(i32) {
+        view.setInt32(0, i32);
+        var i = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+        return i;
+    }
+
     // bit-cast float to u32
     function castFloatToU32(f) {
         view.setFloat32(0, f);
@@ -242,7 +275,7 @@
         return i;
     }
 
-    // bit-cast u32 backt to float
+    // bit-cast u32 back to float
     function castU32ToFloat(u32) {
         view.setUint8(0, (u32 >>> 24) & 0xff);
         view.setUint8(1, (u32 >>> 16) & 0xff);
@@ -666,7 +699,7 @@
         }
 
         catch (err) {
-            //console.log("err: '" + err.message + "'");
+            console.error("err: '" + err.message + "'");
             dout.innerHTML = err.message;
             return;
         }
@@ -674,11 +707,9 @@
         if (node) {
             //LaTeX 
             texout.innerHTML = node.toTex()
-
-
         }
 
-        if (res) {
+        if (res != undefined) {
             console.log("math.js response = '" + res + "'");
             log_message("e: '" + text + "'");
             log_message("r: '" + res + "'");
@@ -1000,7 +1031,7 @@
 
     <div>
         <a class="small_pad" href="https://www.linkedin.com/in/sergeymakeev/" target="_blank">by Sergey Makeev
-            (v1.31)</a><br>
+            (v1.32)</a><br>
     </div>
 
     <button type="button" class="collapsible">Quick cheat sheet</button>
@@ -1011,16 +1042,24 @@
                 <td class="yellow_small">Description</td>
             </tr>
             <tr>
-                <td><span class="white_small">as_float(x)</span></td>
-                <td><span class="gray_small">Interprets the bit pattern of x as a floating-point number</span></td>
+                <td><span class="white_small">u32_to_f32(x)</span></td>
+                <td><span class="gray_small">Interprets input U32 number as F32</span></td>
             </tr>
             <tr>
-                <td><span class="white_small">as_half(x)</span></td>
-                <td><span class="gray_small">Interprets the bit pattern of x as a fp16 floating-point number</span></td>
+                <td><span class="white_small">u16_to_f32(x)</span></td>
+                <td><span class="gray_small">Interprets input U16 number as F16</span></td>
             </tr>
             <tr>
-                <td><span class="white_small">as_uint(x)</span></td>
-                <td><span class="gray_small">Interprets the bit pattern of x as an unsigned integer</span></td>
+                <td><span class="white_small">f32_to_u32(x)</span></td>
+                <td><span class="gray_small">Interprets input FP32 number as U32</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">u32_to_i32(x)</span></td>
+                <td><span class="gray_small">Interprets input U32 number as I32</span></td>
+            </tr>
+            <tr>
+                <td><span class="white_small">i32_to_u32(x)</span></td>
+                <td><span class="gray_small">Interprets input I32 number as U32</span></td>
             </tr>
             <tr>
                 <td><span class="white_small">abs(x)</span></td>
